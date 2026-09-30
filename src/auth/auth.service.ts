@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -22,6 +23,8 @@ import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
 
 @Injectable()
@@ -257,15 +260,157 @@ export class AuthService {
       id: user.id,
       restaurantId: user.restaurantId,
       restaurantName: user.restaurant?.name,
+      restaurantCommercialName: user.restaurant?.commercialName,
+      restaurantAddress: user.restaurant?.address,
       staffId,
       firstName: user.staffProfile?.firstName,
       lastName: user.staffProfile?.lastName,
+      phone: user.staffProfile?.phone,
       email: user.email,
+      userType: user.userType,
       roles,
       passwordStatus: user.passwordStatus,
       mustChangePassword: user.passwordStatus === PasswordStatus.TEMPORARY,
       allowedViews,
     };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['staffProfile', 'restaurant'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (user.staffProfile) {
+      user.staffProfile.firstName = dto.firstName.trim();
+      user.staffProfile.lastName = dto.lastName.trim();
+      if (dto.phone !== undefined) {
+        user.staffProfile.phone = dto.phone.trim();
+      }
+      await this.staffProfileRepo.save(user.staffProfile);
+    } else {
+      const count = await this.staffProfileRepo.count();
+      let staffId = `ADM${String(count + 1).padStart(6, '0')}`;
+      while (await this.staffProfileRepo.findOne({ where: { staffId } })) {
+        staffId = `ADM${String(Math.floor(100000 + Math.random() * 900000))}`;
+      }
+
+      const profile = this.staffProfileRepo.create({
+        userId: user.id,
+        staffId,
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        phone: dto.phone?.trim() || '',
+      });
+      await this.staffProfileRepo.save(profile);
+      user.staffProfile = profile;
+    }
+
+    await this.logAudit(userId, 'PROFILE_UPDATED', {
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+    });
+
+    return {
+      message: 'Perfil actualizado exitosamente',
+      user: {
+        id: user.id,
+        firstName: user.staffProfile.firstName,
+        lastName: user.staffProfile.lastName,
+        phone: user.staffProfile.phone,
+        displayName: `${user.staffProfile.firstName} ${user.staffProfile.lastName}`.trim(),
+      },
+    };
+  }
+
+  async updateRestaurant(userId: string, dto: UpdateRestaurantDto) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['restaurant'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (user.userType !== UserType.ADMIN) {
+      throw new ForbiddenException(
+        'Solo el administrador tiene permisos para modificar la configuración del restaurante',
+      );
+    }
+
+    let restaurant = user.restaurant;
+    if (!restaurant) {
+      restaurant = await this.restaurantRepo.findOne({
+        where: { id: user.restaurantId },
+      });
+    }
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    restaurant.name = dto.name.trim();
+    if (dto.commercialName !== undefined) {
+      restaurant.commercialName = dto.commercialName.trim();
+    }
+    if (dto.address !== undefined) {
+      restaurant.address = dto.address.trim();
+    }
+
+    await this.restaurantRepo.save(restaurant);
+
+    await this.logAudit(userId, 'RESTAURANT_UPDATED', {
+      restaurantId: restaurant.id,
+      name: restaurant.name,
+    });
+
+    return {
+      message: 'Restaurante actualizado exitosamente',
+      restaurant: {
+        id: restaurant.id,
+        name: restaurant.name,
+        commercialName: restaurant.commercialName,
+        address: restaurant.address,
+      },
+    };
+  }
+
+  async deleteAccount(userId: string) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    await this.refreshTokenRepo.update(
+      { userId, isRevoked: false },
+      { isRevoked: true },
+    );
+
+    if (user.userType === UserType.ADMIN) {
+      await this.restaurantRepo.delete({ id: user.restaurantId });
+      await this.logAudit(null, 'RESTAURANT_DELETED', {
+        restaurantId: user.restaurantId,
+        adminUserId: userId,
+      });
+      return {
+        message: 'Restaurante y todas las cuentas asociadas han sido eliminados exitosamente',
+      };
+    } else {
+      await this.staffProfileRepo.delete({ userId });
+      await this.userRepo.delete({ id: userId });
+      await this.logAudit(null, 'USER_DELETED', { userId });
+      return {
+        message: 'Cuenta de usuario eliminada exitosamente',
+      };
+    }
   }
 
   private async generateTokens(

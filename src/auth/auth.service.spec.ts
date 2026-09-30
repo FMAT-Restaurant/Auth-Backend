@@ -6,7 +6,7 @@ import * as bcrypt from 'bcrypt';
 
 import { AuthService } from './auth.service';
 import { Restaurant } from '../database/entities/restaurant.entity';
-import { User, PasswordStatus } from '../database/entities/user.entity';
+import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
@@ -27,11 +27,14 @@ describe('AuthService', () => {
       findOne: jest.fn(),
       create: jest.fn((entity) => ({ id: 'usr-1', ...entity })),
       save: jest.fn((entity) => Promise.resolve({ id: 'usr-1', ...entity })),
+      delete: jest.fn().mockResolvedValue({}),
     };
 
     restaurantRepo = {
+      findOne: jest.fn(),
       create: jest.fn((entity) => ({ id: 'rest-1', ...entity })),
       save: jest.fn((entity) => Promise.resolve({ id: 'rest-1', ...entity })),
+      delete: jest.fn().mockResolvedValue({}),
     };
 
     roleRepo = {
@@ -42,8 +45,10 @@ describe('AuthService', () => {
 
     staffProfileRepo = {
       findOne: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
       create: jest.fn((entity) => entity),
       save: jest.fn((entity) => Promise.resolve(entity)),
+      delete: jest.fn().mockResolvedValue({}),
     };
 
     refreshTokenRepo = {
@@ -207,6 +212,103 @@ describe('AuthService', () => {
           newPassword: 'BrandNewPassword123!',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('debería actualizar el perfil existente del usuario', async () => {
+      const existingUser = {
+        id: 'usr-1',
+        staffProfile: { firstName: 'Juan', lastName: 'Perez', phone: '1111111111' },
+      };
+      userRepo.findOne.mockResolvedValue(existingUser);
+
+      const result = await service.updateProfile('usr-1', {
+        firstName: 'Carlos',
+        lastName: 'Gomez',
+        phone: '9998887766',
+      });
+
+      expect(result).toHaveProperty('message');
+      expect(result.user.firstName).toBe('Carlos');
+      expect(staffProfileRepo.save).toHaveBeenCalled();
+    });
+
+    it('debería crear el perfil si el administrador aún no tenía uno', async () => {
+      const existingUser = {
+        id: 'usr-admin-1',
+        userType: UserType.ADMIN,
+        staffProfile: null,
+      };
+      userRepo.findOne.mockResolvedValue(existingUser);
+      staffProfileRepo.create.mockReturnValue({
+        userId: 'usr-admin-1',
+        staffId: 'ADM000001',
+        firstName: 'Admin',
+        lastName: 'Principal',
+        phone: '1234567890',
+      });
+
+      const result = await service.updateProfile('usr-admin-1', {
+        firstName: 'Admin',
+        lastName: 'Principal',
+        phone: '1234567890',
+      });
+
+      expect(result).toHaveProperty('user');
+      expect(staffProfileRepo.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateRestaurant', () => {
+    it('debería permitir al administrador actualizar los datos del restaurante', async () => {
+      const user = {
+        id: 'usr-admin-1',
+        userType: UserType.ADMIN,
+        restaurantId: 'rest-1',
+        restaurant: { id: 'rest-1', name: 'Restaurante Original' },
+      };
+      userRepo.findOne.mockResolvedValue(user);
+
+      const result = await service.updateRestaurant('usr-admin-1', {
+        name: 'Nuevo Sabor',
+        commercialName: 'Nuevo Sabor Gourmet',
+        address: 'Av. Paseo Montejo 456',
+      });
+
+      expect(result.restaurant.name).toBe('Nuevo Sabor');
+      expect(restaurantRepo.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteAccount', () => {
+    it('debería eliminar el restaurante y sus cuentas si el usuario es administrador', async () => {
+      const user = {
+        id: 'usr-admin-1',
+        userType: UserType.ADMIN,
+        restaurantId: 'rest-1',
+      };
+      userRepo.findOne.mockResolvedValue(user);
+
+      const result = await service.deleteAccount('usr-admin-1');
+
+      expect(restaurantRepo.delete).toHaveBeenCalledWith({ id: 'rest-1' });
+      expect(result).toHaveProperty('message');
+    });
+
+    it('debería eliminar solo al usuario si es de tipo personal (STAFF)', async () => {
+      const user = {
+        id: 'usr-staff-1',
+        userType: UserType.STAFF,
+        restaurantId: 'rest-1',
+      };
+      userRepo.findOne.mockResolvedValue(user);
+
+      const result = await service.deleteAccount('usr-staff-1');
+
+      expect(userRepo.delete).toHaveBeenCalledWith({ id: 'usr-staff-1' });
+      expect(staffProfileRepo.delete).toHaveBeenCalledWith({ userId: 'usr-staff-1' });
+      expect(result).toHaveProperty('message');
     });
   });
 });

@@ -2,6 +2,8 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
+  Delete,
   Body,
   UseGuards,
   HttpCode,
@@ -12,6 +14,8 @@ import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -54,6 +58,31 @@ export class AuthController {
   @Get('me')
   async getMe(@CurrentUser('userId') userId: string) {
     return this.authService.getMe(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('profile')
+  async updateProfile(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('restaurant')
+  async updateRestaurant(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: UpdateRestaurantDto,
+  ) {
+    return this.authService.updateRestaurant(userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('account')
+  @HttpCode(HttpStatus.OK)
+  async deleteAccount(@CurrentUser('userId') userId: string) {
+    return this.authService.deleteAccount(userId);
   }
 
   @UseGuards(JwtAuthGuard)

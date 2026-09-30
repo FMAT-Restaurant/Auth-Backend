@@ -39,6 +39,17 @@ describe('AuthController', () => {
       logout: jest.fn().mockResolvedValue({
         message: 'Sesión cerrada exitosamente',
       }),
+      updateProfile: jest.fn().mockResolvedValue({
+        message: 'Perfil actualizado exitosamente',
+        user: { id: 'usr-1', firstName: 'Juan', lastName: 'Perez' },
+      }),
+      updateRestaurant: jest.fn().mockResolvedValue({
+        message: 'Restaurante actualizado exitosamente',
+        restaurant: { id: 'rest-1', name: 'Nuevo Nombre' },
+      }),
+      deleteAccount: jest.fn().mockResolvedValue({
+        message: 'Cuenta eliminada exitosamente',
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -116,6 +127,32 @@ describe('AuthController', () => {
     it('debería invalidar las sesiones activas en logout', async () => {
       const result = await controller.logout('usr-1');
       expect(authService.logout).toHaveBeenCalledWith('usr-1');
+      expect(result).toHaveProperty('message');
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('debería delegar la actualización de perfil a authService.updateProfile', async () => {
+      const dto = { firstName: 'Juan', lastName: 'Perez', phone: '9991234567' };
+      const result = await controller.updateProfile('usr-1', dto);
+      expect(authService.updateProfile).toHaveBeenCalledWith('usr-1', dto);
+      expect(result).toHaveProperty('user');
+    });
+  });
+
+  describe('updateRestaurant', () => {
+    it('debería delegar la actualización de restaurante a authService.updateRestaurant', async () => {
+      const dto = { name: 'Nuevo Nombre', address: 'Calle 60 #123' };
+      const result = await controller.updateRestaurant('usr-1', dto);
+      expect(authService.updateRestaurant).toHaveBeenCalledWith('usr-1', dto);
+      expect(result).toHaveProperty('restaurant');
+    });
+  });
+
+  describe('deleteAccount', () => {
+    it('debería delegar la eliminación de cuenta a authService.deleteAccount', async () => {
+      const result = await controller.deleteAccount('usr-1');
+      expect(authService.deleteAccount).toHaveBeenCalledWith('usr-1');
       expect(result).toHaveProperty('message');
     });
   });
