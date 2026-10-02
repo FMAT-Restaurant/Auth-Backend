@@ -353,6 +353,12 @@ export class AuthService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
+    if (user.userType !== UserType.ADMIN) {
+      throw new ForbiddenException(
+        'Acceso denegado: El personal operativo no puede eliminar su cuenta. Solo el Administrador puede gestionar bajas.',
+      );
+    }
+
     await this.refreshTokenRepo.update(
       { userId, isRevoked: false },
       { isRevoked: true },

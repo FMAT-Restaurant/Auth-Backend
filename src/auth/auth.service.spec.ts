@@ -331,5 +331,15 @@ describe('AuthService', () => {
       expect(staffProfileRepo.delete).toHaveBeenCalledWith({ userId: 'usr-admin-1' });
       expect(result).toHaveProperty('message');
     });
+
+    it('debería rechazar la eliminación si un usuario STAFF intenta eliminar su cuenta', async () => {
+      const staffUser = {
+        id: 'usr-staff-1',
+        userType: UserType.STAFF,
+      };
+      userRepo.findOne.mockResolvedValue(staffUser);
+
+      await expect(service.deleteAccount('usr-staff-1')).rejects.toThrow(ForbiddenException);
+    });
   });
 });
