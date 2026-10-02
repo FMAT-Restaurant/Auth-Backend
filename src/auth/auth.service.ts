@@ -151,7 +151,10 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    const cleanPassword = dto.password ? dto.password.trim() : '';
+    const isPasswordValid =
+      (await bcrypt.compare(dto.password, user.passwordHash)) ||
+      (await bcrypt.compare(cleanPassword, user.passwordHash));
     if (!isPasswordValid) {
       await this.logAudit(user.id, 'LOGIN_FAILED', { identifier });
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');

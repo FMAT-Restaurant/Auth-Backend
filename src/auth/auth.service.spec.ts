@@ -196,6 +196,26 @@ describe('AuthService', () => {
         }),
       ).rejects.toThrow(UnauthorizedException);
     });
+
+    it('debería autenticar correctamente incluso si la contraseña tiene espacios al inicio o final (copy-paste)', async () => {
+      const hash = await bcrypt.hash('CorrectPassword123!', 10);
+      userRepo.findOne.mockResolvedValue({
+        id: 'usr-1',
+        email: 'admin@test.com',
+        passwordHash: hash,
+        passwordStatus: PasswordStatus.ACTIVE,
+        isActive: true,
+        roles: [{ code: RoleEnum.ADMINISTRADOR }],
+        staffProfile: { staffId: 'ADM000001' },
+      });
+
+      const result = await service.login({
+        identifier: 'admin@test.com',
+        password: '  CorrectPassword123!  ',
+      });
+
+      expect(result).toHaveProperty('accessToken', 'mock-jwt-token');
+    });
   });
 
   describe('changeInitialPassword', () => {
