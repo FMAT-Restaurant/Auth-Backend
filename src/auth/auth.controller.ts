@@ -24,6 +24,12 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Get('setup-status')
+  async getSetupStatus() {
+    return this.authService.getSetupStatus();
+  }
+
+  @Public()
   @Post('setup-admin')
   async setupAdmin(@Body() dto: SetupAdminDto) {
     return this.authService.setupAdmin(dto);

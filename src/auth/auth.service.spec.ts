@@ -78,6 +78,20 @@ describe('AuthService', () => {
     service = module.get<AuthService>(AuthService);
   });
 
+  describe('getSetupStatus', () => {
+    it('debería retornar configured: true si existe un admin', async () => {
+      userRepo.findOne.mockResolvedValueOnce({ id: 'adm-1', userType: UserType.ADMIN });
+      const result = await service.getSetupStatus();
+      expect(result).toEqual({ configured: true });
+    });
+
+    it('debería retornar configured: false si no existe un admin', async () => {
+      userRepo.findOne.mockResolvedValueOnce(null);
+      const result = await service.getSetupStatus();
+      expect(result).toEqual({ configured: false });
+    });
+  });
+
   describe('setupAdmin', () => {
     it('debería configurar al administrador inicial exitosamente', async () => {
       userRepo.findOne.mockResolvedValue(null);

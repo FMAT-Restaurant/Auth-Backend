@@ -9,6 +9,7 @@ describe('AuthController', () => {
 
   beforeEach(async () => {
     authService = {
+      getSetupStatus: jest.fn().mockResolvedValue({ configured: true }),
       setupAdmin: jest.fn().mockResolvedValue({
         message: 'Cuenta de Administrador inicial configurada exitosamente',
         user: { id: 'usr-1', email: 'admin@test.com', staffId: 'ADM000001', roles: [RoleEnum.ADMINISTRADOR] },
@@ -63,6 +64,14 @@ describe('AuthController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('getSetupStatus', () => {
+    it('debería retornar el estado de configuración inicial', async () => {
+      const result = await controller.getSetupStatus();
+      expect(authService.getSetupStatus).toHaveBeenCalled();
+      expect(result).toEqual({ configured: true });
+    });
   });
 
   describe('setupAdmin', () => {

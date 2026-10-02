@@ -41,6 +41,15 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  async getSetupStatus(): Promise<{ configured: boolean }> {
+    const admin = await this.userRepo.findOne({
+      where: { userType: UserType.ADMIN },
+    });
+    return {
+      configured: Boolean(admin),
+    };
+  }
+
   async setupAdmin(dto: SetupAdminDto) {
     const existingAdmin = await this.userRepo.findOne({
       where: { userType: UserType.ADMIN },
