@@ -161,6 +161,7 @@ export class AuthService {
     }
 
     const roleCodes = user.roles ? user.roles.map((r) => r.code) : [];
+    const permissions = this.extractPermissions(user);
     const mustChangePassword = user.passwordStatus === PasswordStatus.TEMPORARY;
 
     const tokens = await this.generateTokens(user, staffId, mustChangePassword);
@@ -175,6 +176,7 @@ export class AuthService {
         staffId,
         email: user.email,
         roles: roleCodes,
+        permissions,
       },
       ...tokens,
     };
@@ -269,6 +271,7 @@ export class AuthService {
 
     const staffId = user.staffProfile ? user.staffProfile.staffId : 'ADMIN';
     const roles = user.roles ? user.roles.map((r) => r.code) : [];
+    const permissions = this.extractPermissions(user);
     const allowedViews = resolveViewsForRoles(roles);
 
     return {
@@ -280,6 +283,7 @@ export class AuthService {
       email: user.email,
       userType: user.userType,
       roles,
+      permissions,
       passwordStatus: user.passwordStatus,
       mustChangePassword: user.passwordStatus === PasswordStatus.TEMPORARY,
       allowedViews,
@@ -372,18 +376,38 @@ export class AuthService {
     };
   }
 
+  private extractPermissions(user: User): string[] {
+    const roles = user.roles ? user.roles.map((r) => r.code) : [];
+    if (roles.includes(RoleEnum.ADMINISTRADOR) || user.userType === UserType.ADMIN) {
+      return ['*'];
+    }
+    const permissions = new Set<string>();
+    if (user.roles) {
+      for (const r of user.roles) {
+        if (r.permissions && Array.isArray(r.permissions)) {
+          for (const p of r.permissions) {
+            permissions.add(p);
+          }
+        }
+      }
+    }
+    return Array.from(permissions);
+  }
+
   private async generateTokens(
     user: User,
     staffId: string,
     mustChangePassword = false,
   ) {
     const roles = user.roles ? user.roles.map((r) => r.code) : [];
+    const permissions = this.extractPermissions(user);
 
     const payload = {
       sub: user.id,
       staffId,
       email: user.email,
       roles,
+      permissions,
       mustChangePassword,
     };
 

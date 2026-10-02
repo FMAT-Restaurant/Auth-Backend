@@ -153,6 +153,7 @@ export class StaffService {
       lastName: u.staffProfile?.lastName,
       phone: u.staffProfile?.phone,
       roles: u.roles.map((r) => r.code),
+      permissions: Array.from(new Set(u.roles.flatMap((r) => r.permissions || []))),
       isActive: u.isActive,
       passwordStatus: u.passwordStatus,
       temporaryPassword:
@@ -183,6 +184,7 @@ export class StaffService {
       lastName: user.staffProfile?.lastName,
       phone: user.staffProfile?.phone,
       roles: user.roles.map((r) => r.code),
+      permissions: Array.from(new Set(user.roles.flatMap((r) => r.permissions || []))),
       isActive: user.isActive,
       passwordStatus: user.passwordStatus,
       temporaryPassword:
@@ -436,8 +438,9 @@ export class StaffService {
     return `Fmat${numbers}!`;
   }
 
-  private getRolePrefix(role: RoleEnum): string {
-    switch (role) {
+  private getRolePrefix(role: string): string {
+    const clean = (role || '').trim().toUpperCase();
+    switch (clean) {
       case RoleEnum.HOST:
         return 'H';
       case RoleEnum.ALMACENISTA:
@@ -446,8 +449,11 @@ export class StaffService {
         return 'M';
       case RoleEnum.CHEF_MASTER:
         return 'C';
-      default:
-        return 'E';
+      default: {
+        const stripped = clean.startsWith('ROL_') ? clean.replace(/^ROL_/, '') : clean;
+        const char = stripped.charAt(0);
+        return char && /[A-Z]/.test(char) ? char : 'E';
+      }
     }
   }
 
