@@ -12,26 +12,22 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
-import { Restaurant } from '../database/entities/restaurant.entity';
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
 import { AuditLog } from '../database/entities/audit-log.entity';
 
-import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
+import { SetupAdminDto } from './dto/setup-admin.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
 
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(Restaurant)
-    private restaurantRepo: Repository<Restaurant>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
     @InjectRepository(Role)
@@ -45,7 +41,16 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async registerRestaurant(dto: RegisterRestaurantDto) {
+  async setupAdmin(dto: SetupAdminDto) {
+    const existingAdmin = await this.userRepo.findOne({
+      where: { userType: UserType.ADMIN },
+    });
+    if (existingAdmin) {
+      throw new ConflictException(
+        'El administrador inicial ya ha sido configurado en el sistema',
+      );
+    }
+
     const existingUser = await this.userRepo.findOne({
       where: { email: dto.email.toLowerCase().trim() },
     });
@@ -55,16 +60,6 @@ export class AuthService {
       );
     }
 
-    // 1. Crear Restaurante
-    const restaurant = this.restaurantRepo.create({
-      name: dto.restaurantName,
-      commercialName: dto.commercialName || dto.restaurantName,
-      address: dto.address,
-      status: 'ACTIVE',
-    });
-    await this.restaurantRepo.save(restaurant);
-
-    // 2. Asegurar existencia de Rol ADMINISTRADOR
     let adminRole = await this.roleRepo.findOne({
       where: { code: RoleEnum.ADMINISTRADOR },
     });
@@ -72,16 +67,14 @@ export class AuthService {
       adminRole = this.roleRepo.create({
         code: RoleEnum.ADMINISTRADOR,
         name: 'Administrador',
-        description: 'Propietario / Gerente con control total del restaurante',
+        description: 'Propietario / Gerente con control total del sistema local',
         isAssignable: false,
       });
       await this.roleRepo.save(adminRole);
     }
 
-    // 3. Crear Usuario Administrador
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const adminUser = this.userRepo.create({
-      restaurantId: restaurant.id,
       userType: UserType.ADMIN,
       email: dto.email.toLowerCase().trim(),
       passwordHash,
@@ -91,23 +84,30 @@ export class AuthService {
     });
     await this.userRepo.save(adminUser);
 
-    // 4. Generar tokens de sesión
-    const tokens = await this.generateTokens(adminUser, 'ADMIN');
+    const staffId = 'ADM000001';
+    const profile = this.staffProfileRepo.create({
+      userId: adminUser.id,
+      staffId,
+      firstName: dto.firstName?.trim() || 'Admin',
+      lastName: dto.lastName?.trim() || 'Principal',
+      phone: dto.phone?.trim() || '',
+    });
+    await this.staffProfileRepo.save(profile);
+    adminUser.staffProfile = profile;
 
-    await this.logAudit(adminUser.id, 'REGISTER_RESTAURANT', {
-      restaurantId: restaurant.id,
+    const tokens = await this.generateTokens(adminUser, staffId);
+
+    await this.logAudit(adminUser.id, 'SETUP_ADMIN', {
       email: adminUser.email,
+      staffId,
     });
 
     return {
-      message: 'Restaurante y cuenta de Administrador registrados exitosamente',
-      restaurant: {
-        id: restaurant.id,
-        name: restaurant.name,
-      },
+      message: 'Cuenta de Administrador inicial configurada exitosamente',
       user: {
         id: adminUser.id,
         email: adminUser.email,
+        staffId,
         roles: [RoleEnum.ADMINISTRADOR],
       },
       ...tokens,
@@ -120,16 +120,17 @@ export class AuthService {
     let staffId = 'ADMIN';
 
     if (identifier.includes('@')) {
-      // Login de Administrador por Email
       user = await this.userRepo.findOne({
         where: { email: identifier.toLowerCase() },
-        relations: ['roles', 'restaurant', 'staffProfile'],
+        relations: ['roles', 'staffProfile'],
       });
+      if (user && user.staffProfile) {
+        staffId = user.staffProfile.staffId;
+      }
     } else {
-      // Login de Personal por Staff ID (XYYYYYY)
       const profile = await this.staffProfileRepo.findOne({
         where: { staffId: identifier.toUpperCase() },
-        relations: ['user', 'user.roles', 'user.restaurant'],
+        relations: ['user', 'user.roles'],
       });
       if (profile && profile.user) {
         user = profile.user;
@@ -159,7 +160,6 @@ export class AuthService {
       mustChangePassword,
       user: {
         id: user.id,
-        restaurantId: user.restaurantId,
         staffId,
         email: user.email,
         roles: roleCodes,
@@ -183,12 +183,10 @@ export class AuthService {
       throw new BadRequestException('La contraseña actual ingresada es incorrecta');
     }
 
-    // Actualizar hash y estado a ACTIVE
     user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
     user.passwordStatus = PasswordStatus.ACTIVE;
     await this.userRepo.save(user);
 
-    // Revocar refresh tokens previos
     await this.refreshTokenRepo.update(
       { userId: user.id, isRevoked: false },
       { isRevoked: true },
@@ -218,7 +216,6 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token inválido o expirado');
     }
 
-    // Rota el refresh token (invalida el actual)
     record.isRevoked = true;
     await this.refreshTokenRepo.save(record);
 
@@ -245,7 +242,7 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      relations: ['roles', 'restaurant', 'staffProfile'],
+      relations: ['roles', 'staffProfile'],
     });
 
     if (!user) {
@@ -258,10 +255,6 @@ export class AuthService {
 
     return {
       id: user.id,
-      restaurantId: user.restaurantId,
-      restaurantName: user.restaurant?.name,
-      restaurantCommercialName: user.restaurant?.commercialName,
-      restaurantAddress: user.restaurant?.address,
       staffId,
       firstName: user.staffProfile?.firstName,
       lastName: user.staffProfile?.lastName,
@@ -278,11 +271,17 @@ export class AuthService {
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      relations: ['staffProfile', 'restaurant'],
+      relations: ['staffProfile'],
     });
 
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (user.userType !== UserType.ADMIN) {
+      throw new ForbiddenException(
+        'Solo el Administrador tiene permisos para editar información de perfil',
+      );
     }
 
     if (user.staffProfile) {
@@ -327,59 +326,6 @@ export class AuthService {
     };
   }
 
-  async updateRestaurant(userId: string, dto: UpdateRestaurantDto) {
-    const user = await this.userRepo.findOne({
-      where: { id: userId },
-      relations: ['restaurant'],
-    });
-
-    if (!user) {
-      throw new NotFoundException('Usuario no encontrado');
-    }
-
-    if (user.userType !== UserType.ADMIN) {
-      throw new ForbiddenException(
-        'Solo el administrador tiene permisos para modificar la configuración del restaurante',
-      );
-    }
-
-    let restaurant = user.restaurant;
-    if (!restaurant) {
-      restaurant = await this.restaurantRepo.findOne({
-        where: { id: user.restaurantId },
-      });
-    }
-
-    if (!restaurant) {
-      throw new NotFoundException('Restaurante no encontrado');
-    }
-
-    restaurant.name = dto.name.trim();
-    if (dto.commercialName !== undefined) {
-      restaurant.commercialName = dto.commercialName.trim();
-    }
-    if (dto.address !== undefined) {
-      restaurant.address = dto.address.trim();
-    }
-
-    await this.restaurantRepo.save(restaurant);
-
-    await this.logAudit(userId, 'RESTAURANT_UPDATED', {
-      restaurantId: restaurant.id,
-      name: restaurant.name,
-    });
-
-    return {
-      message: 'Restaurante actualizado exitosamente',
-      restaurant: {
-        id: restaurant.id,
-        name: restaurant.name,
-        commercialName: restaurant.commercialName,
-        address: restaurant.address,
-      },
-    };
-  }
-
   async deleteAccount(userId: string) {
     const user = await this.userRepo.findOne({
       where: { id: userId },
@@ -394,23 +340,12 @@ export class AuthService {
       { isRevoked: true },
     );
 
-    if (user.userType === UserType.ADMIN) {
-      await this.restaurantRepo.delete({ id: user.restaurantId });
-      await this.logAudit(null, 'RESTAURANT_DELETED', {
-        restaurantId: user.restaurantId,
-        adminUserId: userId,
-      });
-      return {
-        message: 'Restaurante y todas las cuentas asociadas han sido eliminados exitosamente',
-      };
-    } else {
-      await this.staffProfileRepo.delete({ userId });
-      await this.userRepo.delete({ id: userId });
-      await this.logAudit(null, 'USER_DELETED', { userId });
-      return {
-        message: 'Cuenta de usuario eliminada exitosamente',
-      };
-    }
+    await this.staffProfileRepo.delete({ userId });
+    await this.userRepo.delete({ id: userId });
+    await this.logAudit(null, 'USER_DELETED', { userId });
+    return {
+      message: 'Cuenta eliminada exitosamente',
+    };
   }
 
   private async generateTokens(
@@ -422,7 +357,6 @@ export class AuthService {
 
     const payload = {
       sub: user.id,
-      restaurantId: user.restaurantId,
       staffId,
       email: user.email,
       roles,
@@ -431,7 +365,6 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
 
-    // Generar refresh token criptográfico aleatorio
     const rawRefreshToken = crypto.randomBytes(40).toString('hex');
     const tokenHash = this.hashToken(rawRefreshToken);
 

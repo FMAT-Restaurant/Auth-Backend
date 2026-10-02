@@ -4,14 +4,11 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
   OneToOne,
   OneToMany,
   ManyToMany,
   JoinTable,
-  JoinColumn,
 } from 'typeorm';
-import { Restaurant } from './restaurant.entity';
 import { StaffProfile } from './staff-profile.entity';
 import { Role } from './role.entity';
 import { RefreshToken } from './refresh-token.entity';
@@ -30,15 +27,6 @@ export enum PasswordStatus {
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
-
-  @Column({ type: 'uuid' })
-  restaurantId: string;
-
-  @ManyToOne(() => Restaurant, (restaurant) => restaurant.users, {
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn({ name: 'restaurantId' })
-  restaurant: Restaurant;
 
   @Column({ type: 'varchar', length: 20, default: UserType.STAFF })
   userType: UserType;

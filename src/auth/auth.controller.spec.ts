@@ -9,16 +9,16 @@ describe('AuthController', () => {
 
   beforeEach(async () => {
     authService = {
-      registerRestaurant: jest.fn().mockResolvedValue({
-        restaurant: { id: 'rest-1', name: 'Restaurante Test' },
-        user: { id: 'usr-1', email: 'admin@test.com', roles: [RoleEnum.ADMINISTRADOR] },
+      setupAdmin: jest.fn().mockResolvedValue({
+        message: 'Cuenta de Administrador inicial configurada exitosamente',
+        user: { id: 'usr-1', email: 'admin@test.com', staffId: 'ADM000001', roles: [RoleEnum.ADMINISTRADOR] },
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       }),
       login: jest.fn().mockResolvedValue({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
-        user: { id: 'usr-1', roles: [RoleEnum.ADMINISTRADOR] },
+        user: { id: 'usr-1', staffId: 'ADM000001', roles: [RoleEnum.ADMINISTRADOR] },
         mustChangePassword: false,
       }),
       refresh: jest.fn().mockResolvedValue({
@@ -31,10 +31,10 @@ describe('AuthController', () => {
       }),
       getMe: jest.fn().mockResolvedValue({
         id: 'usr-1',
-        restaurantId: 'rest-1',
+        staffId: 'ADM000001',
         email: 'admin@test.com',
         roles: [RoleEnum.ADMINISTRADOR],
-        views: ['dashboard', 'staff', 'reports'],
+        allowedViews: ['dashboard', 'staff', 'reports'],
       }),
       logout: jest.fn().mockResolvedValue({
         message: 'Sesión cerrada exitosamente',
@@ -42,10 +42,6 @@ describe('AuthController', () => {
       updateProfile: jest.fn().mockResolvedValue({
         message: 'Perfil actualizado exitosamente',
         user: { id: 'usr-1', firstName: 'Juan', lastName: 'Perez' },
-      }),
-      updateRestaurant: jest.fn().mockResolvedValue({
-        message: 'Restaurante actualizado exitosamente',
-        restaurant: { id: 'rest-1', name: 'Nuevo Nombre' },
       }),
       deleteAccount: jest.fn().mockResolvedValue({
         message: 'Cuenta eliminada exitosamente',
@@ -69,16 +65,17 @@ describe('AuthController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('registerRestaurant', () => {
-    it('debería delegar el registro de restaurante a authService.registerRestaurant', async () => {
+  describe('setupAdmin', () => {
+    it('debería delegar la configuración inicial de administrador a authService.setupAdmin', async () => {
       const dto = {
-        restaurantName: 'Restaurante Test',
         email: 'admin@test.com',
         password: 'Password123!',
+        firstName: 'Ruben',
+        lastName: 'Admin',
       };
-      const result = await controller.registerRestaurant(dto);
-      expect(authService.registerRestaurant).toHaveBeenCalledWith(dto);
-      expect(result).toHaveProperty('restaurant');
+      const result = await controller.setupAdmin(dto);
+      expect(authService.setupAdmin).toHaveBeenCalledWith(dto);
+      expect(result).toHaveProperty('user');
     });
   });
 
@@ -119,7 +116,7 @@ describe('AuthController', () => {
     it('debería retornar el perfil y vistas del usuario autenticado', async () => {
       const result = await controller.getMe('usr-1');
       expect(authService.getMe).toHaveBeenCalledWith('usr-1');
-      expect(result).toHaveProperty('views');
+      expect(result).toHaveProperty('allowedViews');
     });
   });
 
@@ -137,15 +134,6 @@ describe('AuthController', () => {
       const result = await controller.updateProfile('usr-1', dto);
       expect(authService.updateProfile).toHaveBeenCalledWith('usr-1', dto);
       expect(result).toHaveProperty('user');
-    });
-  });
-
-  describe('updateRestaurant', () => {
-    it('debería delegar la actualización de restaurante a authService.updateRestaurant', async () => {
-      const dto = { name: 'Nuevo Nombre', address: 'Calle 60 #123' };
-      const result = await controller.updateRestaurant('usr-1', dto);
-      expect(authService.updateRestaurant).toHaveBeenCalledWith('usr-1', dto);
-      expect(result).toHaveProperty('restaurant');
     });
   });
 

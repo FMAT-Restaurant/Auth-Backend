@@ -1,11 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  ConflictException,
+  UnauthorizedException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
 import { AuthService } from './auth.service';
-import { Restaurant } from '../database/entities/restaurant.entity';
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
@@ -15,7 +19,6 @@ import { AuditLog } from '../database/entities/audit-log.entity';
 describe('AuthService', () => {
   let service: AuthService;
   let userRepo: any;
-  let restaurantRepo: any;
   let roleRepo: any;
   let staffProfileRepo: any;
   let refreshTokenRepo: any;
@@ -27,13 +30,6 @@ describe('AuthService', () => {
       findOne: jest.fn(),
       create: jest.fn((entity) => ({ id: 'usr-1', ...entity })),
       save: jest.fn((entity) => Promise.resolve({ id: 'usr-1', ...entity })),
-      delete: jest.fn().mockResolvedValue({}),
-    };
-
-    restaurantRepo = {
-      findOne: jest.fn(),
-      create: jest.fn((entity) => ({ id: 'rest-1', ...entity })),
-      save: jest.fn((entity) => Promise.resolve({ id: 'rest-1', ...entity })),
       delete: jest.fn().mockResolvedValue({}),
     };
 
@@ -70,7 +66,6 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: getRepositoryToken(Restaurant), useValue: restaurantRepo },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Role), useValue: roleRepo },
         { provide: getRepositoryToken(StaffProfile), useValue: staffProfileRepo },
@@ -83,31 +78,43 @@ describe('AuthService', () => {
     service = module.get<AuthService>(AuthService);
   });
 
-  describe('registerRestaurant', () => {
-    it('debería registrar un nuevo restaurante y su administrador exitosamente', async () => {
+  describe('setupAdmin', () => {
+    it('debería configurar al administrador inicial exitosamente', async () => {
       userRepo.findOne.mockResolvedValue(null);
       roleRepo.findOne.mockResolvedValue({ code: RoleEnum.ADMINISTRADOR });
 
-      const result = await service.registerRestaurant({
-        restaurantName: 'La Trattoria',
-        email: 'admin@trattoria.com',
+      const result = await service.setupAdmin({
+        email: 'admin@fmat.com',
         password: 'Password123!',
+        firstName: 'Ruben',
+        lastName: 'Admin',
       });
 
-      expect(result).toHaveProperty('restaurant');
       expect(result).toHaveProperty('accessToken', 'mock-jwt-token');
       expect(result.user.roles).toContain(RoleEnum.ADMINISTRADOR);
-      expect(restaurantRepo.save).toHaveBeenCalled();
       expect(userRepo.save).toHaveBeenCalled();
+      expect(staffProfileRepo.save).toHaveBeenCalled();
+    });
+
+    it('debería lanzar ConflictException si el administrador ya ha sido configurado', async () => {
+      userRepo.findOne.mockResolvedValueOnce({ id: 'existing-admin', userType: UserType.ADMIN });
+
+      await expect(
+        service.setupAdmin({
+          email: 'admin2@fmat.com',
+          password: 'Password123!',
+        }),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('debería lanzar ConflictException si el correo ya existe', async () => {
-      userRepo.findOne.mockResolvedValue({ id: 'existing-id' });
+      userRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'existing-user' });
 
       await expect(
-        service.registerRestaurant({
-          restaurantName: 'Test',
-          email: 'duplicate@test.com',
+        service.setupAdmin({
+          email: 'duplicate@fmat.com',
           password: 'Password123!',
         }),
       ).rejects.toThrow(ConflictException);
@@ -119,12 +126,12 @@ describe('AuthService', () => {
       const hash = await bcrypt.hash('CorrectPassword123!', 10);
       userRepo.findOne.mockResolvedValue({
         id: 'usr-1',
-        restaurantId: 'rest-1',
         email: 'admin@test.com',
         passwordHash: hash,
         passwordStatus: PasswordStatus.ACTIVE,
         isActive: true,
         roles: [{ code: RoleEnum.ADMINISTRADOR }],
+        staffProfile: { staffId: 'ADM000001' },
       });
 
       const result = await service.login({
@@ -134,7 +141,7 @@ describe('AuthService', () => {
 
       expect(result).toHaveProperty('accessToken', 'mock-jwt-token');
       expect(result.mustChangePassword).toBe(false);
-      expect(result.user.staffId).toBe('ADMIN');
+      expect(result.user.staffId).toBe('ADM000001');
     });
 
     it('debería autenticar al Personal por Staff ID y marcar mustChangePassword=true si la clave es TEMPORARY', async () => {
@@ -143,7 +150,6 @@ describe('AuthService', () => {
         staffId: 'M000001',
         user: {
           id: 'usr-staff-1',
-          restaurantId: 'rest-1',
           passwordHash: hash,
           passwordStatus: PasswordStatus.TEMPORARY,
           isActive: true,
@@ -216,9 +222,10 @@ describe('AuthService', () => {
   });
 
   describe('updateProfile', () => {
-    it('debería actualizar el perfil existente del usuario', async () => {
+    it('debería permitir al administrador actualizar su perfil existente', async () => {
       const existingUser = {
         id: 'usr-1',
+        userType: UserType.ADMIN,
         staffProfile: { firstName: 'Juan', lastName: 'Perez', phone: '1111111111' },
       };
       userRepo.findOne.mockResolvedValue(existingUser);
@@ -232,6 +239,22 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('message');
       expect(result.user.firstName).toBe('Carlos');
       expect(staffProfileRepo.save).toHaveBeenCalled();
+    });
+
+    it('debería lanzar ForbiddenException si un usuario STAFF intenta editar su perfil', async () => {
+      const staffUser = {
+        id: 'usr-staff-1',
+        userType: UserType.STAFF,
+        staffProfile: { firstName: 'Mesero', lastName: 'Uno' },
+      };
+      userRepo.findOne.mockResolvedValue(staffUser);
+
+      await expect(
+        service.updateProfile('usr-staff-1', {
+          firstName: 'Intento',
+          lastName: 'Cambio',
+        }),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('debería crear el perfil si el administrador aún no tenía uno', async () => {
@@ -260,54 +283,18 @@ describe('AuthService', () => {
     });
   });
 
-  describe('updateRestaurant', () => {
-    it('debería permitir al administrador actualizar los datos del restaurante', async () => {
-      const user = {
-        id: 'usr-admin-1',
-        userType: UserType.ADMIN,
-        restaurantId: 'rest-1',
-        restaurant: { id: 'rest-1', name: 'Restaurante Original' },
-      };
-      userRepo.findOne.mockResolvedValue(user);
-
-      const result = await service.updateRestaurant('usr-admin-1', {
-        name: 'Nuevo Sabor',
-        commercialName: 'Nuevo Sabor Gourmet',
-        address: 'Av. Paseo Montejo 456',
-      });
-
-      expect(result.restaurant.name).toBe('Nuevo Sabor');
-      expect(restaurantRepo.save).toHaveBeenCalled();
-    });
-  });
-
   describe('deleteAccount', () => {
-    it('debería eliminar el restaurante y sus cuentas si el usuario es administrador', async () => {
+    it('debería eliminar la cuenta del usuario', async () => {
       const user = {
         id: 'usr-admin-1',
         userType: UserType.ADMIN,
-        restaurantId: 'rest-1',
       };
       userRepo.findOne.mockResolvedValue(user);
 
       const result = await service.deleteAccount('usr-admin-1');
 
-      expect(restaurantRepo.delete).toHaveBeenCalledWith({ id: 'rest-1' });
-      expect(result).toHaveProperty('message');
-    });
-
-    it('debería eliminar solo al usuario si es de tipo personal (STAFF)', async () => {
-      const user = {
-        id: 'usr-staff-1',
-        userType: UserType.STAFF,
-        restaurantId: 'rest-1',
-      };
-      userRepo.findOne.mockResolvedValue(user);
-
-      const result = await service.deleteAccount('usr-staff-1');
-
-      expect(userRepo.delete).toHaveBeenCalledWith({ id: 'usr-staff-1' });
-      expect(staffProfileRepo.delete).toHaveBeenCalledWith({ userId: 'usr-staff-1' });
+      expect(userRepo.delete).toHaveBeenCalledWith({ id: 'usr-admin-1' });
+      expect(staffProfileRepo.delete).toHaveBeenCalledWith({ userId: 'usr-admin-1' });
       expect(result).toHaveProperty('message');
     });
   });

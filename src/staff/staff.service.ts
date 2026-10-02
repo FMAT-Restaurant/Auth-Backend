@@ -32,7 +32,7 @@ export class StaffService {
     private eventsService: EventsService,
   ) {}
 
-  async createStaff(restaurantId: string, dto: CreateStaffDto) {
+  async createStaff(dto: CreateStaffDto) {
     // 1. Validar no-asignabilidad del rol ADMINISTRADOR (BR-AUTH-002, REQ-AUTH-008)
     if (dto.roles.includes(RoleEnum.ADMINISTRADOR)) {
       throw new BadRequestException(
@@ -81,7 +81,6 @@ export class StaffService {
 
     // 5. Crear Usuario y Perfil
     const user = this.userRepo.create({
-      restaurantId,
       userType: UserType.STAFF,
       email: null,
       passwordHash,
@@ -104,7 +103,6 @@ export class StaffService {
 
     // 6. Publicar evento a RabbitMQ (REQ-AUTH-017)
     await this.eventsService.publishStaffCreated({
-      restaurantId,
       userId: user.id,
       staffId,
       firstName: profile.firstName,
@@ -119,7 +117,6 @@ export class StaffService {
       temporaryPassword: tempPassword,
       user: {
         id: user.id,
-        restaurantId,
         staffId,
         firstName: profile.firstName,
         lastName: profile.lastName,
@@ -130,13 +127,12 @@ export class StaffService {
     };
   }
 
-  async findAllStaff(restaurantId: string, role?: string, isActive?: boolean) {
+  async findAllStaff(role?: string, isActive?: boolean) {
     const query = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.restaurantId = :restaurantId', { restaurantId })
-      .andWhere('user.userType = :userType', { userType: UserType.STAFF });
+      .where('user.userType = :userType', { userType: UserType.STAFF });
 
     if (isActive !== undefined) {
       query.andWhere('user.isActive = :isActive', { isActive });
@@ -161,13 +157,12 @@ export class StaffService {
     }));
   }
 
-  async findStaffById(restaurantId: string, id: string) {
+  async findStaffById(id: string) {
     const user = await this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.restaurantId = :restaurantId', { restaurantId })
-      .andWhere('user.userType = :userType', { userType: UserType.STAFF })
+      .where('user.userType = :userType', { userType: UserType.STAFF })
       .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
       .getOne();
 
@@ -188,11 +183,7 @@ export class StaffService {
     };
   }
 
-  async updateRoles(
-    restaurantId: string,
-    id: string,
-    dto: UpdateStaffRolesDto,
-  ) {
+  async updateRoles(id: string, dto: UpdateStaffRolesDto) {
     if (dto.roles.includes(RoleEnum.ADMINISTRADOR)) {
       throw new BadRequestException(
         'El rol ADMINISTRADOR no es asignable al personal operativo',
@@ -209,7 +200,7 @@ export class StaffService {
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.restaurantId = :restaurantId', { restaurantId })
+      .where('user.userType = :userType', { userType: UserType.STAFF })
       .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
       .getOne();
 
@@ -226,7 +217,6 @@ export class StaffService {
 
     // Publicar evento RabbitMQ
     await this.eventsService.publishStaffRolesUpdated({
-      restaurantId,
       userId: user.id,
       staffId: user.staffProfile?.staffId || '',
       firstName: user.staffProfile?.firstName || '',
@@ -242,16 +232,12 @@ export class StaffService {
     };
   }
 
-  async updateStatus(
-    restaurantId: string,
-    id: string,
-    dto: UpdateStaffStatusDto,
-  ) {
+  async updateStatus(id: string, dto: UpdateStaffStatusDto) {
     const user = await this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.restaurantId = :restaurantId', { restaurantId })
+      .where('user.userType = :userType', { userType: UserType.STAFF })
       .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
       .getOne();
 
@@ -272,7 +258,6 @@ export class StaffService {
 
     // Publicar evento RabbitMQ
     await this.eventsService.publishStaffStatusChanged({
-      restaurantId,
       userId: user.id,
       staffId: user.staffProfile?.staffId || '',
       firstName: user.staffProfile?.firstName || '',
@@ -288,15 +273,11 @@ export class StaffService {
     };
   }
 
-  async resetPassword(
-    restaurantId: string,
-    id: string,
-    dto: ResetPasswordDto,
-  ) {
+  async resetPassword(id: string, dto: ResetPasswordDto) {
     const user = await this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
-      .where('user.restaurantId = :restaurantId', { restaurantId })
+      .where('user.userType = :userType', { userType: UserType.STAFF })
       .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
       .getOne();
 

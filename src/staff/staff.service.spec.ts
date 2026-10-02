@@ -67,7 +67,7 @@ describe('StaffService', () => {
   describe('createStaff', () => {
     it('debería rechazar si se intenta asignar el rol ADMINISTRADOR', async () => {
       await expect(
-        service.createStaff('rest-1', {
+        service.createStaff({
           firstName: 'Juan',
           lastName: 'Pérez',
           roles: [RoleEnum.ADMINISTRADOR],
@@ -77,7 +77,7 @@ describe('StaffService', () => {
 
     it('debería rechazar si la lista de roles está vacía', async () => {
       await expect(
-        service.createStaff('rest-1', {
+        service.createStaff({
           firstName: 'Juan',
           lastName: 'Pérez',
           roles: [],
@@ -85,14 +85,14 @@ describe('StaffService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('debería registrar un nuevo miembro del personal y publicar evento en RabbitMQ', async () => {
+    it('debería registrar un nuevo miembro del personal y publicar evento en RabbitMQ sin restaurantId', async () => {
       roleRepo.find.mockResolvedValue([
         { id: '1', code: RoleEnum.MESERO, name: RoleEnum.MESERO },
       ]);
       staffProfileRepo.count.mockResolvedValue(0);
       staffProfileRepo.findOne.mockResolvedValue(null);
 
-      const result = await service.createStaff('rest-1', {
+      const result = await service.createStaff({
         firstName: 'Juan',
         lastName: 'Pérez',
         phone: '9991234567',
@@ -105,10 +105,12 @@ describe('StaffService', () => {
       expect(staffProfileRepo.save).toHaveBeenCalled();
       expect(eventsService.publishStaffCreated).toHaveBeenCalledWith(
         expect.objectContaining({
-          restaurantId: 'rest-1',
           staffId: 'M000001',
           roles: [RoleEnum.MESERO],
         }),
+      );
+      expect(eventsService.publishStaffCreated).not.toHaveBeenCalledWith(
+        expect.objectContaining({ restaurantId: expect.anything() }),
       );
     });
 
@@ -119,7 +121,7 @@ describe('StaffService', () => {
       staffProfileRepo.count.mockResolvedValue(10);
       staffProfileRepo.findOne.mockResolvedValue(null);
 
-      const result = await service.createStaff('rest-1', {
+      const result = await service.createStaff({
         firstName: 'Ana',
         lastName: 'Gómez',
         roles: [RoleEnum.HOST],
@@ -130,7 +132,7 @@ describe('StaffService', () => {
   });
 
   describe('findAllStaff', () => {
-    it('debería retornar el listado de personal del restaurante', async () => {
+    it('debería retornar el listado de personal', async () => {
       const mockQueryBuilder = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
@@ -153,7 +155,7 @@ describe('StaffService', () => {
       };
       userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
-      const result = await service.findAllStaff('rest-1', RoleEnum.MESERO, true);
+      const result = await service.findAllStaff(RoleEnum.MESERO, true);
       expect(result).toHaveLength(1);
       expect(result[0].staffId).toBe('M000001');
       expect(result[0].roles).toContain(RoleEnum.MESERO);
@@ -182,7 +184,7 @@ describe('StaffService', () => {
       };
       userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
-      const result = await service.findStaffById('rest-1', 'M000001');
+      const result = await service.findStaffById('M000001');
       expect(result.staffId).toBe('M000001');
       expect(result.firstName).toBe('Juan');
     });
@@ -196,7 +198,7 @@ describe('StaffService', () => {
       };
       userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
-      await expect(service.findStaffById('rest-1', 'M999999')).rejects.toThrow(
+      await expect(service.findStaffById('M999999')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -205,7 +207,7 @@ describe('StaffService', () => {
   describe('updateRoles', () => {
     it('debería impedir asignar el rol ADMINISTRADOR', async () => {
       await expect(
-        service.updateRoles('rest-1', 'usr-1', {
+        service.updateRoles('usr-1', {
           roles: [RoleEnum.ADMINISTRADOR],
         }),
       ).rejects.toThrow(BadRequestException);
@@ -230,12 +232,17 @@ describe('StaffService', () => {
         { code: RoleEnum.HOST },
       ]);
 
-      const result = await service.updateRoles('rest-1', 'usr-1', {
+      const result = await service.updateRoles('usr-1', {
         roles: [RoleEnum.MESERO, RoleEnum.HOST],
       });
 
       expect(result.roles).toEqual([RoleEnum.MESERO, RoleEnum.HOST]);
-      expect(eventsService.publishStaffRolesUpdated).toHaveBeenCalled();
+      expect(eventsService.publishStaffRolesUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          staffId: 'M000001',
+          roles: [RoleEnum.MESERO, RoleEnum.HOST],
+        }),
+      );
     });
   });
 
@@ -255,7 +262,7 @@ describe('StaffService', () => {
       };
       userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
-      const result = await service.updateStatus('rest-1', 'usr-1', {
+      const result = await service.updateStatus('usr-1', {
         isActive: false,
       });
 
@@ -264,7 +271,12 @@ describe('StaffService', () => {
         { userId: 'usr-1', isRevoked: false },
         { isRevoked: true },
       );
-      expect(eventsService.publishStaffStatusChanged).toHaveBeenCalled();
+      expect(eventsService.publishStaffStatusChanged).toHaveBeenCalledWith(
+        expect.objectContaining({
+          staffId: 'M000001',
+          isActive: false,
+        }),
+      );
     });
   });
 
@@ -284,7 +296,7 @@ describe('StaffService', () => {
       };
       userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
-      const result = await service.resetPassword('rest-1', 'usr-1', {});
+      const result = await service.resetPassword('usr-1', {});
 
       expect(result).toHaveProperty('temporaryPassword');
       expect(user.passwordStatus).toBe(PasswordStatus.TEMPORARY);

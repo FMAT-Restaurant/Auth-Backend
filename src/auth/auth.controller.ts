@@ -10,12 +10,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterRestaurantDto } from './dto/register-restaurant.dto';
+import { SetupAdminDto } from './dto/setup-admin.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -25,9 +24,9 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  @Post('register-restaurant')
-  async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
-    return this.authService.registerRestaurant(dto);
+  @Post('setup-admin')
+  async setupAdmin(@Body() dto: SetupAdminDto) {
+    return this.authService.setupAdmin(dto);
   }
 
   @Public()
@@ -67,15 +66,6 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(userId, dto);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch('restaurant')
-  async updateRestaurant(
-    @CurrentUser('userId') userId: string,
-    @Body() dto: UpdateRestaurantDto,
-  ) {
-    return this.authService.updateRestaurant(userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)

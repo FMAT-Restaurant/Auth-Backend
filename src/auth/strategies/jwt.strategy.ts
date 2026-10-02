@@ -5,7 +5,6 @@ import { ConfigService } from '@nestjs/config';
 
 export interface JwtPayload {
   sub: string;
-  restaurantId: string;
   staffId: string;
   email: string | null;
   roles: string[];
@@ -28,12 +27,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    if (!payload.sub || !payload.restaurantId) {
+    if (!payload.sub) {
       throw new UnauthorizedException('Token inválido: Faltan claims requeridos');
     }
     return {
       userId: payload.sub,
-      restaurantId: payload.restaurantId,
       staffId: payload.staffId,
       email: payload.email,
       roles: payload.roles || [],

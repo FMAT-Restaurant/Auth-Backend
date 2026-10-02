@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 
 export interface StaffEventPayload {
-  restaurantId: string;
   userId: string;
   staffId: string;
   firstName: string;

@@ -4,7 +4,6 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-import { Restaurant } from '../database/entities/restaurant.entity';
 import { User } from '../database/entities/user.entity';
 import { Role } from '../database/entities/role.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
@@ -18,7 +17,6 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Restaurant,
       User,
       Role,
       StaffProfile,

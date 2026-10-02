@@ -74,29 +74,29 @@ describe('StaffController', () => {
         phone: '9991234567',
         roles: [RoleEnum.MESERO],
       };
-      const result = await controller.createStaff('rest-1', dto);
-      expect(staffService.createStaff).toHaveBeenCalledWith('rest-1', dto);
+      const result = await controller.createStaff(dto);
+      expect(staffService.createStaff).toHaveBeenCalledWith(dto);
       expect(result).toHaveProperty('staffId', 'M000001');
     });
   });
 
   describe('findAllStaff', () => {
     it('debería delegar el listado de personal con filtros', async () => {
-      const result = await controller.findAllStaff('rest-1', RoleEnum.MESERO, 'true');
-      expect(staffService.findAllStaff).toHaveBeenCalledWith('rest-1', RoleEnum.MESERO, true);
+      const result = await controller.findAllStaff(RoleEnum.MESERO, 'true');
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(RoleEnum.MESERO, true);
       expect(result).toHaveLength(1);
     });
 
     it('debería manejar filtros indefinidos adecuadamente', async () => {
-      await controller.findAllStaff('rest-1', undefined, undefined);
-      expect(staffService.findAllStaff).toHaveBeenCalledWith('rest-1', undefined, undefined);
+      await controller.findAllStaff(undefined, undefined);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, undefined);
     });
   });
 
   describe('findStaffById', () => {
     it('debería delegar la consulta individual a staffService.findStaffById', async () => {
-      const result = await controller.findStaffById('rest-1', 'M000001');
-      expect(staffService.findStaffById).toHaveBeenCalledWith('rest-1', 'M000001');
+      const result = await controller.findStaffById('M000001');
+      expect(staffService.findStaffById).toHaveBeenCalledWith('M000001');
       expect(result).toHaveProperty('staffId', 'M000001');
     });
   });
@@ -104,8 +104,8 @@ describe('StaffController', () => {
   describe('updateRoles', () => {
     it('debería delegar la actualización de roles a staffService.updateRoles', async () => {
       const dto = { roles: [RoleEnum.MESERO, RoleEnum.HOST] };
-      const result = await controller.updateRoles('rest-1', 'M000001', dto);
-      expect(staffService.updateRoles).toHaveBeenCalledWith('rest-1', 'M000001', dto);
+      const result = await controller.updateRoles('M000001', dto);
+      expect(staffService.updateRoles).toHaveBeenCalledWith('M000001', dto);
       expect(result.roles).toContain(RoleEnum.HOST);
     });
   });
@@ -113,8 +113,8 @@ describe('StaffController', () => {
   describe('updateStatus', () => {
     it('debería delegar el cambio de estado a staffService.updateStatus', async () => {
       const dto = { isActive: false };
-      const result = await controller.updateStatus('rest-1', 'M000001', dto);
-      expect(staffService.updateStatus).toHaveBeenCalledWith('rest-1', 'M000001', dto);
+      const result = await controller.updateStatus('M000001', dto);
+      expect(staffService.updateStatus).toHaveBeenCalledWith('M000001', dto);
       expect(result.isActive).toBe(false);
     });
   });
@@ -122,8 +122,8 @@ describe('StaffController', () => {
   describe('resetPassword', () => {
     it('debería delegar el reseteo de contraseña a staffService.resetPassword', async () => {
       const dto = {};
-      const result = await controller.resetPassword('rest-1', 'M000001', dto);
-      expect(staffService.resetPassword).toHaveBeenCalledWith('rest-1', 'M000001', dto);
+      const result = await controller.resetPassword('M000001', dto);
+      expect(staffService.resetPassword).toHaveBeenCalledWith('M000001', dto);
       expect(result).toHaveProperty('temporaryPassword');
     });
   });

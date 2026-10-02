@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import {
-  Restaurant,
   User,
   StaffProfile,
   Role,
@@ -24,7 +23,6 @@ import {
             type: 'postgres',
             url: databaseUrl,
             entities: [
-              Restaurant,
               User,
               StaffProfile,
               Role,
@@ -43,7 +41,6 @@ import {
           password: config.get<string>('DB_PASSWORD', 'postgres'),
           database: config.get<string>('DB_NAME', 'fmat_auth'),
           entities: [
-            Restaurant,
             User,
             StaffProfile,
             Role,
