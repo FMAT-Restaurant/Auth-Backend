@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, SelectQueryBuilder } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
@@ -162,13 +162,15 @@ export class StaffService {
   }
 
   async findStaffById(id: string) {
-    const user = await this.userRepo
+    const qb = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.userType = :userType', { userType: UserType.STAFF })
-      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
-      .getOne();
+      .where('user.userType = :userType', { userType: UserType.STAFF });
+
+    this.applyUserOrStaffIdFilter(qb, id);
+
+    const user = await qb.getOne();
 
     if (!user) {
       throw new NotFoundException('Miembro del personal no encontrado');
@@ -202,13 +204,15 @@ export class StaffService {
       );
     }
 
-    const user = await this.userRepo
+    const qb = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.userType = :userType', { userType: UserType.STAFF })
-      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
-      .getOne();
+      .where('user.userType = :userType', { userType: UserType.STAFF });
+
+    this.applyUserOrStaffIdFilter(qb, id);
+
+    const user = await qb.getOne();
 
     if (!user) {
       throw new NotFoundException('Miembro del personal no encontrado');
@@ -239,13 +243,15 @@ export class StaffService {
   }
 
   async updateStatus(id: string, dto: UpdateStaffStatusDto) {
-    const user = await this.userRepo
+    const qb = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.userType = :userType', { userType: UserType.STAFF })
-      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
-      .getOne();
+      .where('user.userType = :userType', { userType: UserType.STAFF });
+
+    this.applyUserOrStaffIdFilter(qb, id);
+
+    const user = await qb.getOne();
 
     if (!user) {
       throw new NotFoundException('Miembro del personal no encontrado');
@@ -280,13 +286,15 @@ export class StaffService {
   }
 
   async updateStaff(id: string, dto: UpdateStaffDto) {
-    const user = await this.userRepo
+    const qb = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
       .leftJoinAndSelect('user.roles', 'role')
-      .where('user.userType = :userType', { userType: UserType.STAFF })
-      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
-      .getOne();
+      .where('user.userType = :userType', { userType: UserType.STAFF });
+
+    this.applyUserOrStaffIdFilter(qb, id);
+
+    const user = await qb.getOne();
 
     if (!user) {
       throw new NotFoundException('Miembro del personal no encontrado');
@@ -330,12 +338,14 @@ export class StaffService {
   }
 
   async deleteStaff(id: string) {
-    const user = await this.userRepo
+    const qb = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
-      .where('user.userType = :userType', { userType: UserType.STAFF })
-      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
-      .getOne();
+      .where('user.userType = :userType', { userType: UserType.STAFF });
+
+    this.applyUserOrStaffIdFilter(qb, id);
+
+    const user = await qb.getOne();
 
     if (!user) {
       throw new NotFoundException('Miembro del personal no encontrado');
@@ -368,12 +378,14 @@ export class StaffService {
   }
 
   async resetPassword(id: string, dto?: ResetPasswordDto) {
-    const user = await this.userRepo
+    const qb = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
-      .where('user.userType = :userType', { userType: UserType.STAFF })
-      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
-      .getOne();
+      .where('user.userType = :userType', { userType: UserType.STAFF });
+
+    this.applyUserOrStaffIdFilter(qb, id);
+
+    const user = await qb.getOne();
 
     if (!user) {
       throw new NotFoundException('Miembro del personal no encontrado');
@@ -399,6 +411,24 @@ export class StaffService {
       staffId: user.staffProfile?.staffId,
       temporaryPassword: tempPassword,
     };
+  }
+
+  private applyUserOrStaffIdFilter(
+    qb: SelectQueryBuilder<User>,
+    id: string,
+  ): SelectQueryBuilder<User> {
+    const cleanId = id.trim();
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        cleanId,
+      );
+    if (isUuid) {
+      return qb.andWhere('user.id = :id', { id: cleanId });
+    } else {
+      return qb.andWhere('UPPER(profile.staffId) = :id', {
+        id: cleanId.toUpperCase(),
+      });
+    }
   }
 
   private generateRandomTempPassword(): string {

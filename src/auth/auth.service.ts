@@ -190,12 +190,17 @@ export class AuthService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    const isMatch = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    const cleanCurrent = dto.currentPassword ? dto.currentPassword.trim() : '';
+    const cleanNew = dto.newPassword ? dto.newPassword.trim() : '';
+
+    const isMatch =
+      (await bcrypt.compare(dto.currentPassword, user.passwordHash)) ||
+      (await bcrypt.compare(cleanCurrent, user.passwordHash));
     if (!isMatch) {
       throw new BadRequestException('La contraseña actual ingresada es incorrecta');
     }
 
-    user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    user.passwordHash = await bcrypt.hash(cleanNew, 10);
     user.passwordStatus = PasswordStatus.ACTIVE;
     user.temporaryPassword = null;
     await this.userRepo.save(user);
