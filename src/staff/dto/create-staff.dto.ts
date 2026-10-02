@@ -1,13 +1,11 @@
 import {
   ArrayNotEmpty,
   IsArray,
-  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
-import { RoleEnum } from '../../database/entities/role.entity';
 
 export class CreateStaffDto {
   @IsString()
