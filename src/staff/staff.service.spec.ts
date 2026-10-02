@@ -21,6 +21,7 @@ describe('StaffService', () => {
       create: jest.fn((entity) => ({ id: 'usr-staff-1', ...entity })),
       save: jest.fn((entity) => Promise.resolve({ id: 'usr-staff-1', ...entity })),
       createQueryBuilder: jest.fn(),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
 
     staffProfileRepo = {
@@ -28,6 +29,7 @@ describe('StaffService', () => {
       save: jest.fn((entity) => Promise.resolve({ id: 'profile-1', ...entity })),
       count: jest.fn().mockResolvedValue(0),
       findOne: jest.fn().mockResolvedValue(null),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
 
     roleRepo = {
@@ -38,12 +40,14 @@ describe('StaffService', () => {
 
     refreshTokenRepo = {
       update: jest.fn().mockResolvedValue({ affected: 1 }),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
 
     eventsService = {
       publishStaffCreated: jest.fn().mockResolvedValue(undefined),
       publishStaffRolesUpdated: jest.fn().mockResolvedValue(undefined),
       publishStaffStatusChanged: jest.fn().mockResolvedValue(undefined),
+      publishStaffDeleted: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -301,6 +305,64 @@ describe('StaffService', () => {
       expect(result).toHaveProperty('temporaryPassword');
       expect(user.passwordStatus).toBe(PasswordStatus.TEMPORARY);
       expect(refreshTokenRepo.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateStaff', () => {
+    it('debería actualizar información del empleado correctamente', async () => {
+      const user = {
+        id: 'usr-1',
+        staffProfile: { staffId: 'M000001', firstName: 'Juan', lastName: 'Pérez' },
+        roles: [{ code: RoleEnum.MESERO }],
+        isActive: true,
+      };
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(user),
+      };
+      userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.HOST }]);
+
+      const result = await service.updateStaff('usr-1', {
+        firstName: 'Juan Carlos',
+        lastName: 'Pérez Gómez',
+        roles: [RoleEnum.HOST],
+      });
+
+      expect(user.staffProfile.firstName).toBe('Juan Carlos');
+      expect(user.staffProfile.lastName).toBe('Pérez Gómez');
+      expect(staffProfileRepo.save).toHaveBeenCalled();
+      expect(userRepo.save).toHaveBeenCalled();
+      expect(result.staffId).toBe('M000001');
+    });
+  });
+
+  describe('deleteStaff', () => {
+    it('debería eliminar al colaborador y sus dependencias', async () => {
+      const user = {
+        id: 'usr-1',
+        staffProfile: { staffId: 'M000001' },
+      };
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(user),
+      };
+      userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.deleteStaff('usr-1');
+
+      expect(result.message).toContain('eliminado definitivamente');
+      expect(refreshTokenRepo.delete).toHaveBeenCalledWith({ userId: 'usr-1' });
+      expect(staffProfileRepo.delete).toHaveBeenCalledWith({ userId: 'usr-1' });
+      expect(userRepo.delete).toHaveBeenCalledWith({ id: 'usr-1' });
+      expect(eventsService.publishStaffDeleted).toHaveBeenCalledWith({
+        userId: 'usr-1',
+        staffId: 'M000001',
+      });
     });
   });
 });

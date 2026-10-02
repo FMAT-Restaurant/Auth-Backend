@@ -11,7 +11,7 @@ export enum RoleEnum {
 @Entity('roles')
 export class Role {
   @PrimaryColumn({ type: 'varchar', length: 50 })
-  code: RoleEnum;
+  code: RoleEnum | string;
 
   @Column({ type: 'varchar', length: 100 })
   name: string;
@@ -21,4 +21,10 @@ export class Role {
 
   @Column({ type: 'boolean', default: true })
   isAssignable: boolean;
+
+  @Column('simple-array', { nullable: true })
+  permissions: string[];
+
+  @Column({ type: 'boolean', default: false })
+  isSystemRole: boolean;
 }

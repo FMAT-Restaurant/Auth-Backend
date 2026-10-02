@@ -4,6 +4,7 @@ import {
   Get,
   Put,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -13,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UpdateStaffRolesDto } from './dto/update-staff-roles.dto';
 import { UpdateStaffStatusDto } from './dto/update-staff-status.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -63,11 +65,24 @@ export class StaffController {
     return this.staffService.updateStatus(id, dto);
   }
 
+  @Patch(':id')
+  async updateStaff(
+    @Param('id') id: string,
+    @Body() dto: UpdateStaffDto,
+  ) {
+    return this.staffService.updateStaff(id, dto);
+  }
+
+  @Delete(':id')
+  async deleteStaff(@Param('id') id: string) {
+    return this.staffService.deleteStaff(id);
+  }
+
   @Post(':id/reset-password')
   @HttpCode(HttpStatus.OK)
   async resetPassword(
     @Param('id') id: string,
-    @Body() dto: ResetPasswordDto,
+    @Body() dto?: ResetPasswordDto,
   ) {
     return this.staffService.resetPassword(id, dto);
   }

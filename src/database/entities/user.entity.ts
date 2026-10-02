@@ -40,6 +40,9 @@ export class User {
   @Column({ type: 'varchar', length: 20, default: PasswordStatus.ACTIVE })
   passwordStatus: PasswordStatus;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  temporaryPassword?: string | null;
+
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 

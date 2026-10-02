@@ -127,4 +127,26 @@ describe('StaffController', () => {
       expect(result).toHaveProperty('temporaryPassword');
     });
   });
+
+  describe('updateStaff', () => {
+    it('debería delegar la actualización del colaborador a staffService.updateStaff', async () => {
+      const dto = { firstName: 'Carlos', lastName: 'Gómez' };
+      staffService.updateStaff = jest.fn().mockResolvedValue({ id: 'usr-1', staffId: 'M000001' });
+      const result = await controller.updateStaff('M000001', dto);
+      expect(staffService.updateStaff).toHaveBeenCalledWith('M000001', dto);
+      expect(result).toHaveProperty('staffId', 'M000001');
+    });
+  });
+
+  describe('deleteStaff', () => {
+    it('debería delegar la eliminación a staffService.deleteStaff', async () => {
+      staffService.deleteStaff = jest.fn().mockResolvedValue({
+        message: 'Colaborador eliminado definitivamente del sistema',
+        staffId: 'M000001',
+      });
+      const result = await controller.deleteStaff('M000001');
+      expect(staffService.deleteStaff).toHaveBeenCalledWith('M000001');
+      expect(result.message).toContain('eliminado definitivamente');
+    });
+  });
 });

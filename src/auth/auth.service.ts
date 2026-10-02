@@ -194,6 +194,7 @@ export class AuthService {
 
     user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
     user.passwordStatus = PasswordStatus.ACTIVE;
+    user.temporaryPassword = null;
     await this.userRepo.save(user);
 
     await this.refreshTokenRepo.update(

@@ -87,4 +87,33 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
   async publishStaffStatusChanged(data: StaffEventPayload) {
     return this.publish('staff.status.changed', 'urn:fmat:event:staff:status-changed', data);
   }
+
+  async publishStaffDeleted(data: { userId: string; staffId: string }) {
+    const cloudEvent = {
+      specversion: '1.0',
+      type: 'urn:fmat:event:staff:member-deleted',
+      source: 'urn:fmat:service:auth',
+      id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      time: new Date().toISOString(),
+      datacontenttype: 'application/json',
+      data,
+    };
+    if (this.channel) {
+      try {
+        this.channel.publish(
+          this.exchange,
+          'staff.deleted',
+          Buffer.from(JSON.stringify(cloudEvent)),
+          { persistent: true },
+        );
+        this.logger.log(`Evento publicado [staff.deleted]: ${cloudEvent.id}`);
+      } catch (err) {
+        this.logger.error(`Error publicando evento [staff.deleted]: ${err.message}`);
+      }
+    } else {
+      this.logger.debug(
+        `[RabbitMQ Mock] Evento omitido por ausencia de broker: [staff.deleted] ${JSON.stringify(cloudEvent)}`,
+      );
+    }
+  }
 }

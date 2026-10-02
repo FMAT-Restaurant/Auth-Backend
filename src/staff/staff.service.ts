@@ -14,6 +14,7 @@ import { RefreshToken } from '../database/entities/refresh-token.entity';
 import { EventsService } from '../events/events.service';
 
 import { CreateStaffDto } from './dto/create-staff.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UpdateStaffRolesDto } from './dto/update-staff-roles.dto';
 import { UpdateStaffStatusDto } from './dto/update-staff-status.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -73,10 +74,10 @@ export class StaffService {
     const prefix = this.getRolePrefix(primaryRole);
     const staffId = await this.generateUniqueStaffId(prefix);
 
-    // 4. Contraseña temporal
+    // 4. Contraseña temporal aleatoria segura
     const tempPassword =
       dto.initialPassword ||
-      `Temp${Math.floor(1000 + Math.random() * 9000)}!`;
+      this.generateRandomTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
     // 5. Crear Usuario y Perfil
@@ -85,6 +86,7 @@ export class StaffService {
       email: null,
       passwordHash,
       passwordStatus: PasswordStatus.TEMPORARY,
+      temporaryPassword: tempPassword,
       isActive: true,
       roles: roleEntities,
     });
@@ -153,6 +155,8 @@ export class StaffService {
       roles: u.roles.map((r) => r.code),
       isActive: u.isActive,
       passwordStatus: u.passwordStatus,
+      temporaryPassword:
+        u.passwordStatus === PasswordStatus.TEMPORARY ? u.temporaryPassword : null,
       createdAt: u.createdAt,
     }));
   }
@@ -179,6 +183,8 @@ export class StaffService {
       roles: user.roles.map((r) => r.code),
       isActive: user.isActive,
       passwordStatus: user.passwordStatus,
+      temporaryPassword:
+        user.passwordStatus === PasswordStatus.TEMPORARY ? user.temporaryPassword : null,
       createdAt: user.createdAt,
     };
   }
@@ -273,7 +279,95 @@ export class StaffService {
     };
   }
 
-  async resetPassword(id: string, dto: ResetPasswordDto) {
+  async updateStaff(id: string, dto: UpdateStaffDto) {
+    const user = await this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.staffProfile', 'profile')
+      .leftJoinAndSelect('user.roles', 'role')
+      .where('user.userType = :userType', { userType: UserType.STAFF })
+      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
+      .getOne();
+
+    if (!user) {
+      throw new NotFoundException('Miembro del personal no encontrado');
+    }
+
+    if (dto.firstName !== undefined && user.staffProfile) {
+      user.staffProfile.firstName = dto.firstName.trim();
+    }
+    if (dto.lastName !== undefined && user.staffProfile) {
+      user.staffProfile.lastName = dto.lastName.trim();
+    }
+    if (user.staffProfile) {
+      await this.staffProfileRepo.save(user.staffProfile);
+    }
+
+    if (dto.roles && dto.roles.length > 0) {
+      if (dto.roles.includes(RoleEnum.ADMINISTRADOR)) {
+        throw new BadRequestException(
+          'El rol ADMINISTRADOR no es asignable al personal operativo',
+        );
+      }
+      const roleEntities = await this.roleRepo.find({
+        where: { code: In(dto.roles) },
+      });
+      user.roles = roleEntities;
+    }
+
+    if (dto.isActive !== undefined) {
+      user.isActive = dto.isActive;
+      if (!user.isActive) {
+        await this.refreshTokenRepo.update(
+          { userId: user.id, isRevoked: false },
+          { isRevoked: true },
+        );
+      }
+    }
+
+    await this.userRepo.save(user);
+
+    return this.findStaffById(user.id);
+  }
+
+  async deleteStaff(id: string) {
+    const user = await this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.staffProfile', 'profile')
+      .where('user.userType = :userType', { userType: UserType.STAFF })
+      .andWhere('(user.id = :id OR profile.staffId = :id)', { id })
+      .getOne();
+
+    if (!user) {
+      throw new NotFoundException('Miembro del personal no encontrado');
+    }
+
+    const staffId = user.staffProfile?.staffId || '';
+    const userId = user.id;
+
+    // 1. Revocar y eliminar tokens
+    await this.refreshTokenRepo.delete({ userId });
+
+    // 2. Eliminar staff profile
+    if (user.staffProfile) {
+      await this.staffProfileRepo.delete({ userId });
+    }
+
+    // 3. Eliminar usuario
+    await this.userRepo.delete({ id: userId });
+
+    // 4. Publicar evento a RabbitMQ
+    await this.eventsService.publishStaffDeleted({
+      userId,
+      staffId,
+    });
+
+    return {
+      message: 'Colaborador eliminado definitivamente del sistema',
+      staffId,
+    };
+  }
+
+  async resetPassword(id: string, dto?: ResetPasswordDto) {
     const user = await this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
@@ -286,10 +380,11 @@ export class StaffService {
     }
 
     const tempPassword =
-      dto.temporaryPassword ||
-      `Temp${Math.floor(1000 + Math.random() * 9000)}!`;
+      dto?.temporaryPassword ||
+      this.generateRandomTempPassword();
     user.passwordHash = await bcrypt.hash(tempPassword, 10);
     user.passwordStatus = PasswordStatus.TEMPORARY;
+    user.temporaryPassword = tempPassword;
     await this.userRepo.save(user);
 
     // Revocar sesiones activas
@@ -304,6 +399,11 @@ export class StaffService {
       staffId: user.staffProfile?.staffId,
       temporaryPassword: tempPassword,
     };
+  }
+
+  private generateRandomTempPassword(): string {
+    const numbers = Math.floor(1000 + Math.random() * 9000);
+    return `Fmat${numbers}!`;
   }
 
   private getRolePrefix(role: RoleEnum): string {
