@@ -17,8 +17,4 @@ export class SetupAdminDto {
   @IsString()
   @IsOptional()
   lastName?: string;
-
-  @IsString()
-  @IsOptional()
-  phone?: string;
 }

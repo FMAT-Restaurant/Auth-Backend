@@ -90,7 +90,7 @@ export class AuthService {
       staffId,
       firstName: dto.firstName?.trim() || 'Admin',
       lastName: dto.lastName?.trim() || 'Principal',
-      phone: dto.phone?.trim() || '',
+      phone: '',
     });
     await this.staffProfileRepo.save(profile);
     adminUser.staffProfile = profile;
