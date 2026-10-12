@@ -1,0 +1,51 @@
+services:
+  # Base de Datos PostgreSQL aislada para el Microservicio de Auth
+  auth-db:
+    image: postgres:16-alpine
+    container_name: fmat-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fmat_auth
+    ports:
+      # Se expone en el puerto 5433 en el host para evitar colisiones si otro microservicio ya usa el 5432
+      - "${AUTH_DB_PORT:-5433}:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fmat_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth-network
+
+  # Microservicio Auth Backend (NestJS)
+  auth-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fmat-auth-backend
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@auth-db:5432/fmat_auth}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-secret_jwt_access_fmat_restaurant_2026}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-secret_jwt_refresh_fmat_restaurant_2026}
+    ports:
+      - "${PORT:-4000}:3000"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - auth-network
+
+volumes:
+  auth_postgres_data:
+    driver: local
+
+networks:
+  auth-network:
+    driver: bridge

@@ -21,13 +21,22 @@ API REST centralizada para la autenticación, autorización basada en permisos (
 
 ### Opción 1: Con Docker (Recomendado para otros equipos)
 
-En la raíz del proyecto global (`FmatRestaurant`), ejecuta:
+Este microservicio es completamente autónomo y cuenta con su propio `docker-compose.yml`. Cualquier desarrollador de otro equipo solo necesita clonar este repositorio y ejecutar:
 
 ```bash
-docker compose up --build auth-backend auth-db
+docker compose up --build
 ```
 
-La API estará lista y disponible en `http://localhost:4000/api/v1`.
+Esto levantará automáticamente el microservicio y su base de datos PostgreSQL aislada (en el puerto `5433` para no colisionar con otros microservicios). La API estará lista en `http://localhost:4000/api/v1` sin necesidad de instalar Node.js ni configurar bases de datos.
+
+> **Uso directo sin compilar (Imagen GHCR):**
+> También pueden consumir la imagen Docker ya compilada que publica automáticamente nuestro pipeline:
+> ```yaml
+> auth-backend:
+>   image: ghcr.io/fmat-restaurant/auth-backend:latest
+>   ports:
+>     - "4000:3000"
+> ```
 
 ---
 
