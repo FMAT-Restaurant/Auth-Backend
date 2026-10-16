@@ -32,7 +32,7 @@ services:
       PORT: 3000
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@auth-db:5432/fmat_auth}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-secret_jwt_access_fmat_restaurant_2026}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_restaurant_auth_2026!}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-secret_jwt_refresh_fmat_restaurant_2026}
     ports:
       - "${PORT:-4000}:3000"
