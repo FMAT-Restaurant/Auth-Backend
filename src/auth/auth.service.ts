@@ -403,6 +403,7 @@ export class AuthService {
     const permissions = this.extractPermissions(user);
 
     const payload = {
+      iss: 'urn:fmat:restaurant:auth',
       sub: user.id,
       staffId,
       email: user.email,
