@@ -53,10 +53,10 @@ describe('EventsService', () => {
     expect(amqp.connect).toHaveBeenCalledWith('amqp://localhost:5672');
     expect(mockChannel.assertExchange).toHaveBeenCalled();
 
-    await service.publishStaffCreated(samplePayload);
-    await service.publishStaffRolesUpdated(samplePayload);
-    await service.publishStaffStatusChanged(samplePayload);
-    await service.publishStaffDeleted({ userId: 'usr-1', staffId: 'M000001' });
+    service.publishStaffCreated(samplePayload);
+    service.publishStaffRolesUpdated(samplePayload);
+    service.publishStaffStatusChanged(samplePayload);
+    service.publishStaffDeleted({ userId: 'usr-1', staffId: 'M000001' });
 
     expect(mockChannel.publish).toHaveBeenCalledTimes(4);
 
@@ -69,8 +69,8 @@ describe('EventsService', () => {
     (amqp.connect as jest.Mock).mockRejectedValueOnce(new Error('Broker offline'));
 
     await service.onModuleInit();
-    await service.publishStaffCreated(samplePayload);
-    await service.publishStaffDeleted({ userId: 'usr-1', staffId: 'M000001' });
+    service.publishStaffCreated(samplePayload);
+    service.publishStaffDeleted({ userId: 'usr-1', staffId: 'M000001' });
 
     expect(mockChannel.publish).not.toHaveBeenCalled();
   });
@@ -83,7 +83,7 @@ describe('EventsService', () => {
       throw new Error('Publish error');
     });
 
-    await expect(service.publishStaffCreated(samplePayload)).resolves.toBeUndefined();
+    expect(() => service.publishStaffCreated(samplePayload)).not.toThrow();
 
     mockChannel.close.mockRejectedValueOnce(new Error('Close error'));
     await expect(service.onModuleDestroy()).resolves.toBeUndefined();

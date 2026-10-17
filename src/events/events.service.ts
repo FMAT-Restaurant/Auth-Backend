@@ -77,19 +77,23 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async publishStaffCreated(data: StaffEventPayload) {
+  publishStaffCreated(data: StaffEventPayload): Promise<void> {
     this.publish('staff.created', 'urn:fmat:event:staff:member-created', data);
+    return Promise.resolve();
   }
 
-  async publishStaffRolesUpdated(data: StaffEventPayload) {
+  publishStaffRolesUpdated(data: StaffEventPayload): Promise<void> {
     this.publish('staff.roles.updated', 'urn:fmat:event:staff:roles-updated', data);
+    return Promise.resolve();
   }
 
-  async publishStaffStatusChanged(data: StaffEventPayload) {
+  publishStaffStatusChanged(data: StaffEventPayload): Promise<void> {
     this.publish('staff.status.changed', 'urn:fmat:event:staff:status-changed', data);
+    return Promise.resolve();
   }
 
-  async publishStaffDeleted(data: { userId: string; staffId: string }) {
+  publishStaffDeleted(data: { userId: string; staffId: string }): Promise<void> {
     this.publish('staff.deleted', 'urn:fmat:event:staff:member-deleted', data);
+    return Promise.resolve();
   }
 }
