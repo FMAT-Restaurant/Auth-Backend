@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, SelectQueryBuilder } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'node:crypto';
 
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
@@ -23,14 +24,14 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 export class StaffService {
   constructor(
     @InjectRepository(User)
-    private userRepo: Repository<User>,
+    private readonly userRepo: Repository<User>,
     @InjectRepository(StaffProfile)
-    private staffProfileRepo: Repository<StaffProfile>,
+    private readonly staffProfileRepo: Repository<StaffProfile>,
     @InjectRepository(Role)
-    private roleRepo: Repository<Role>,
+    private readonly roleRepo: Repository<Role>,
     @InjectRepository(RefreshToken)
-    private refreshTokenRepo: Repository<RefreshToken>,
-    private eventsService: EventsService,
+    private readonly refreshTokenRepo: Repository<RefreshToken>,
+    private readonly eventsService: EventsService,
   ) {}
 
   async createStaff(dto: CreateStaffDto) {
@@ -434,7 +435,7 @@ export class StaffService {
   }
 
   private generateRandomTempPassword(): string {
-    const numbers = Math.floor(1000 + Math.random() * 9000);
+    const numbers = crypto.randomInt(1000, 10000);
     return `Fmat${numbers}!`;
   }
 

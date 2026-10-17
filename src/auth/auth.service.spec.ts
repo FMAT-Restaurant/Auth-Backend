@@ -342,4 +342,62 @@ describe('AuthService', () => {
       await expect(service.deleteAccount('usr-staff-1')).rejects.toThrow(ForbiddenException);
     });
   });
+
+  describe('refresh, logout y getMe', () => {
+    it('debería renovar tokens con un refreshToken válido', async () => {
+      refreshTokenRepo.findOne.mockResolvedValue({
+        tokenHash: 'hash',
+        isRevoked: false,
+        expiresAt: new Date(Date.now() + 60000),
+        user: {
+          id: 'usr-1',
+          isActive: true,
+          passwordStatus: PasswordStatus.ACTIVE,
+          roles: [{ code: RoleEnum.MESERO, permissions: ['orders:view'] }],
+          staffProfile: { staffId: 'M000001' },
+        },
+      });
+
+      const result = await service.refresh({ refreshToken: 'raw-token' });
+      expect(result).toHaveProperty('accessToken', 'mock-jwt-token');
+      expect(refreshTokenRepo.save).toHaveBeenCalled();
+    });
+
+    it('debería lanzar UnauthorizedException si el refreshToken no existe o expiró', async () => {
+      refreshTokenRepo.findOne.mockResolvedValue(null);
+      await expect(service.refresh({ refreshToken: 'invalid' })).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('debería cerrar sesión y revocar refresh tokens', async () => {
+      const result = await service.logout('usr-1');
+      expect(result).toHaveProperty('message');
+      expect(refreshTokenRepo.update).toHaveBeenCalled();
+    });
+
+    it('debería retornar el perfil completo en getMe', async () => {
+      userRepo.findOne.mockResolvedValue({
+        id: 'usr-1',
+        email: 'admin@fmat.com',
+        userType: UserType.ADMIN,
+        isActive: true,
+        passwordStatus: PasswordStatus.ACTIVE,
+        roles: [{ code: RoleEnum.ADMINISTRADOR }],
+        staffProfile: {
+          staffId: 'ADM000001',
+          firstName: 'Ruben',
+          lastName: 'Perez',
+          phone: '9991112233',
+        },
+        createdAt: new Date(),
+      });
+
+      const me = await service.getMe('usr-1');
+      expect(me.staffId).toBe('ADM000001');
+      expect(me.firstName).toBe('Ruben');
+      expect(me.permissions).toEqual(['*']);
+    });
+  });
 });
+

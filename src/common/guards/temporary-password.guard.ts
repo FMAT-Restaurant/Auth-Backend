@@ -11,7 +11,7 @@ export class TemporaryPasswordGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (user && user.mustChangePassword) {
+    if (user?.mustChangePassword) {
       throw new ForbiddenException({
         statusCode: 403,
         error: 'Forbidden',

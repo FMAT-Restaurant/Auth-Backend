@@ -10,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto';
+import * as crypto from 'node:crypto';
 
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
@@ -29,16 +29,16 @@ import { resolveViewsForRoles } from '../common/constants/views.constant';
 export class AuthService {
   constructor(
     @InjectRepository(User)
-    private userRepo: Repository<User>,
+    private readonly userRepo: Repository<User>,
     @InjectRepository(Role)
-    private roleRepo: Repository<Role>,
+    private readonly roleRepo: Repository<Role>,
     @InjectRepository(StaffProfile)
-    private staffProfileRepo: Repository<StaffProfile>,
+    private readonly staffProfileRepo: Repository<StaffProfile>,
     @InjectRepository(RefreshToken)
-    private refreshTokenRepo: Repository<RefreshToken>,
+    private readonly refreshTokenRepo: Repository<RefreshToken>,
     @InjectRepository(AuditLog)
-    private auditLogRepo: Repository<AuditLog>,
-    private jwtService: JwtService,
+    private readonly auditLogRepo: Repository<AuditLog>,
+    private readonly jwtService: JwtService,
   ) {}
 
   async getSetupStatus(): Promise<{ configured: boolean }> {
@@ -133,7 +133,7 @@ export class AuthService {
         where: { email: identifier.toLowerCase() },
         relations: ['roles', 'staffProfile'],
       });
-      if (user && user.staffProfile) {
+      if (user?.staffProfile) {
         staffId = user.staffProfile.staffId;
       }
     } else {
@@ -141,13 +141,13 @@ export class AuthService {
         where: { staffId: identifier.toUpperCase() },
         relations: ['user', 'user.roles'],
       });
-      if (profile && profile.user) {
+      if (profile?.user) {
         user = profile.user;
         staffId = profile.staffId;
       }
     }
 
-    if (!user || !user.isActive) {
+    if (!user?.isActive) {
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');
     }
 
@@ -240,7 +240,7 @@ export class AuthService {
     await this.refreshTokenRepo.save(record);
 
     const user = record.user;
-    if (!user || !user.isActive) {
+    if (!user?.isActive) {
       throw new UnauthorizedException('Usuario inactivo');
     }
 
@@ -316,8 +316,9 @@ export class AuthService {
     } else {
       const count = await this.staffProfileRepo.count();
       let staffId = `ADM${String(count + 1).padStart(6, '0')}`;
-      while (await this.staffProfileRepo.findOne({ where: { staffId } })) {
-        staffId = `ADM${String(Math.floor(100000 + Math.random() * 900000))}`;
+      const existing = await this.staffProfileRepo.findOne({ where: { staffId } });
+      if (existing) {
+        staffId = `ADM${String(crypto.randomInt(100000, 1000000))}`;
       }
 
       const profile = this.staffProfileRepo.create({
