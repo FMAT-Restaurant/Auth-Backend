@@ -15,4 +15,4 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Auth Backend running on http://localhost:${port}`);
 }
-bootstrap();
+void bootstrap();

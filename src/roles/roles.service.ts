@@ -134,8 +134,9 @@ export class RolesService implements OnModuleInit {
           .toUpperCase()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^A-Z0-9]+/g, '_')
-          .replace(/^_+|_+$/g, '')}`;
+          .split(/[^A-Z0-9]+/)
+          .filter(Boolean)
+          .join('_')}`;
 
     if (!roleCode.startsWith('ROL_') && !['HOST', 'ALMACENISTA', 'MESERO', 'CHEF_MASTER'].includes(roleCode)) {
       roleCode = `ROL_${roleCode}`;

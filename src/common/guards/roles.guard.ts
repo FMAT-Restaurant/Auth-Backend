@@ -10,7 +10,7 @@ import { RoleEnum } from '../../database/entities/role.entity';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
     const requiredRoles = this.reflector.getAllAndOverride<RoleEnum[]>(
@@ -23,7 +23,7 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest();
-    if (!user || !user.roles) {
+    if (!user?.roles) {
       throw new ForbiddenException(
         'Acceso denegado: El usuario no cuenta con roles autorizados',
       );

@@ -79,7 +79,11 @@
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s",
-      "!main.(t|j)s"
+      "!main.(t|j)s",
+      "!**/*.module.(t|j)s",
+      "!**/*.dto.(t|j)s",
+      "!**/*.entity.(t|j)s",
+      "!**/index.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
     "coverageReporters": [

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
+import * as crypto from 'node:crypto';
 
 export interface StaffEventPayload {
   userId: string;
@@ -18,7 +19,7 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
   private channel: amqp.Channel | null = null;
   private readonly exchange = 'restaurant.staff.events';
 
-  constructor(private configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
     const rabbitUrl = this.configService.get<string>(
@@ -46,12 +47,12 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async publish(routingKey: string, type: string, data: StaffEventPayload) {
+  private publish(routingKey: string, type: string, data: StaffEventPayload | { userId: string; staffId: string }) {
     const cloudEvent = {
       specversion: '1.0',
       type,
       source: 'urn:fmat:service:auth',
-      id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      id: `evt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
       time: new Date().toISOString(),
       datacontenttype: 'application/json',
       data,
@@ -77,43 +78,18 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publishStaffCreated(data: StaffEventPayload) {
-    return this.publish('staff.created', 'urn:fmat:event:staff:member-created', data);
+    this.publish('staff.created', 'urn:fmat:event:staff:member-created', data);
   }
 
   async publishStaffRolesUpdated(data: StaffEventPayload) {
-    return this.publish('staff.roles.updated', 'urn:fmat:event:staff:roles-updated', data);
+    this.publish('staff.roles.updated', 'urn:fmat:event:staff:roles-updated', data);
   }
 
   async publishStaffStatusChanged(data: StaffEventPayload) {
-    return this.publish('staff.status.changed', 'urn:fmat:event:staff:status-changed', data);
+    this.publish('staff.status.changed', 'urn:fmat:event:staff:status-changed', data);
   }
 
   async publishStaffDeleted(data: { userId: string; staffId: string }) {
-    const cloudEvent = {
-      specversion: '1.0',
-      type: 'urn:fmat:event:staff:member-deleted',
-      source: 'urn:fmat:service:auth',
-      id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      time: new Date().toISOString(),
-      datacontenttype: 'application/json',
-      data,
-    };
-    if (this.channel) {
-      try {
-        this.channel.publish(
-          this.exchange,
-          'staff.deleted',
-          Buffer.from(JSON.stringify(cloudEvent)),
-          { persistent: true },
-        );
-        this.logger.log(`Evento publicado [staff.deleted]: ${cloudEvent.id}`);
-      } catch (err) {
-        this.logger.error(`Error publicando evento [staff.deleted]: ${err.message}`);
-      }
-    } else {
-      this.logger.debug(
-        `[RabbitMQ Mock] Evento omitido por ausencia de broker: [staff.deleted] ${JSON.stringify(cloudEvent)}`,
-      );
-    }
+    this.publish('staff.deleted', 'urn:fmat:event:staff:member-deleted', data);
   }
 }

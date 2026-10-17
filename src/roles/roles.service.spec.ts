@@ -34,13 +34,30 @@ describe('RolesService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('getPermissionsCatalog', () => {
+  describe('getPermissionsCatalog & seedDefaultRoles', () => {
     it('debería devolver el catálogo de permisos estructurado por microservicio', () => {
       const catalog = service.getPermissionsCatalog();
       expect(catalog).toBeInstanceOf(Array);
       expect(catalog.length).toBeGreaterThan(0);
       expect(catalog[0]).toHaveProperty('serviceKey');
       expect(catalog[0]).toHaveProperty('permissions');
+    });
+
+    it('debería sembrar los roles por defecto en onModuleInit y actualizar los que no tengan permisos', async () => {
+      roleRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ code: RoleEnum.MESERO, permissions: [] })
+        .mockResolvedValue({ code: RoleEnum.HOST, permissions: ['sala:tables:view'] });
+
+      await service.onModuleInit();
+      expect(roleRepo.create).toHaveBeenCalled();
+      expect(roleRepo.save).toHaveBeenCalled();
+    });
+
+    it('debería listar todos los roles y lanzar error si un código no existe', async () => {
+      await expect(service.findAllRoles()).resolves.toEqual([]);
+      roleRepo.findOne.mockResolvedValueOnce(null);
+      await expect(service.findRoleByCode('INEXISTENTE')).rejects.toThrow();
     });
   });
 
