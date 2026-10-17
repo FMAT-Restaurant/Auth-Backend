@@ -395,7 +395,7 @@ describe('AuthService', () => {
 
       const me = await service.getMe('usr-1');
       expect(me.staffId).toBe('ADM000001');
-      expect(me.displayName).toBe('Ruben Perez');
+      expect(me.firstName).toBe('Ruben');
       expect(me.permissions).toEqual(['*']);
     });
   });
