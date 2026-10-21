@@ -31,6 +31,7 @@ describe('AuthService', () => {
       create: jest.fn((entity) => ({ id: 'usr-1', ...entity })),
       save: jest.fn((entity) => Promise.resolve({ id: 'usr-1', ...entity })),
       delete: jest.fn().mockResolvedValue({}),
+      createQueryBuilder: jest.fn(),
     };
 
     roleRepo = {
@@ -397,6 +398,56 @@ describe('AuthService', () => {
       expect(me.staffId).toBe('ADM000001');
       expect(me.firstName).toBe('Ruben');
       expect(me.permissions).toEqual(['*']);
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    it('debería marcar passwordResetRequested: true si el colaborador está activo', async () => {
+      const staffUser = {
+        id: 'usr-staff-1',
+        isActive: true,
+        passwordResetRequested: false,
+        staffProfile: { staffId: 'M000001' },
+      };
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(staffUser),
+      };
+      userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.requestPasswordReset({ identifier: 'M000001' });
+
+      expect(result.message).toBe('Solicitud de cambio de contraseña enviada exitosamente');
+      expect(staffUser.passwordResetRequested).toBe(true);
+      expect(userRepo.save).toHaveBeenCalledWith(staffUser);
+      expect(auditLogRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'PASSWORD_RESET_REQUESTED',
+        }),
+      );
+    });
+
+    it('debería retornar mensaje exitoso sin modificar usuario si el empleado no existe o está inactivo', async () => {
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      };
+      userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.requestPasswordReset({ identifier: 'INEXISTENTE' });
+
+      expect(result.message).toBe('Solicitud de cambio de contraseña enviada exitosamente');
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('debería rechazar si el identifier está vacío', async () => {
+      await expect(
+        service.requestPasswordReset({ identifier: '   ' }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

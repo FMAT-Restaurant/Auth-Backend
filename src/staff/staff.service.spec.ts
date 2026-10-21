@@ -290,6 +290,7 @@ describe('StaffService', () => {
         id: 'usr-1',
         passwordHash: 'old-hash',
         passwordStatus: PasswordStatus.ACTIVE,
+        passwordResetRequested: true,
         staffProfile: { staffId: 'M000001' },
       };
       const mockQueryBuilder = {
@@ -304,6 +305,7 @@ describe('StaffService', () => {
 
       expect(result).toHaveProperty('temporaryPassword');
       expect(user.passwordStatus).toBe(PasswordStatus.TEMPORARY);
+      expect(user.passwordResetRequested).toBe(false);
       expect(refreshTokenRepo.update).toHaveBeenCalled();
     });
   });
