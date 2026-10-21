@@ -41,6 +41,7 @@ services:
         condition: service_healthy
     networks:
       - auth-network
+      - restaurant-network
 
 volumes:
   auth_postgres_data:
@@ -49,3 +50,6 @@ volumes:
 networks:
   auth-network:
     driver: bridge
+  restaurant-network:
+    name: restaurant-network
+    external: true

@@ -19,6 +19,10 @@ import {
         const databaseUrl = config.get<string>('DATABASE_URL');
 
         if (databaseUrl) {
+          const requiresSsl =
+            databaseUrl.includes('sslmode=require') ||
+            databaseUrl.includes('neon.tech');
+
           return {
             type: 'postgres',
             url: databaseUrl,
@@ -30,6 +34,18 @@ import {
               AuditLog,
             ],
             synchronize: true, // auto-sync schema for development
+            ...(requiresSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+            retryAttempts: 10,
+            retryDelay: 3000,
+            extra: {
+              // Neon cierra conexiones inactivas y suspende el compute (scale-to-zero).
+              // Estas opciones evitan reutilizar sockets muertos y toleran el arranque en frío.
+              max: 10,
+              keepAlive: true,
+              keepAliveInitialDelayMillis: 10000,
+              idleTimeoutMillis: 30000,
+              connectionTimeoutMillis: 15000,
+            },
           };
         }
 
