@@ -157,6 +157,7 @@ export class StaffService {
       permissions: Array.from(new Set(u.roles.flatMap((r) => r.permissions || []))),
       isActive: u.isActive,
       passwordStatus: u.passwordStatus,
+      passwordResetRequested: Boolean(u.passwordResetRequested),
       temporaryPassword:
         u.passwordStatus === PasswordStatus.TEMPORARY ? u.temporaryPassword : null,
       createdAt: u.createdAt,
@@ -188,6 +189,7 @@ export class StaffService {
       permissions: Array.from(new Set(user.roles.flatMap((r) => r.permissions || []))),
       isActive: user.isActive,
       passwordStatus: user.passwordStatus,
+      passwordResetRequested: Boolean(user.passwordResetRequested),
       temporaryPassword:
         user.passwordStatus === PasswordStatus.TEMPORARY ? user.temporaryPassword : null,
       createdAt: user.createdAt,
@@ -400,6 +402,7 @@ export class StaffService {
     user.passwordHash = await bcrypt.hash(tempPassword, 10);
     user.passwordStatus = PasswordStatus.TEMPORARY;
     user.temporaryPassword = tempPassword;
+    user.passwordResetRequested = false;
     await this.userRepo.save(user);
 
     // Revocar sesiones activas

@@ -23,6 +23,7 @@ import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
 
 @Injectable()
@@ -374,6 +375,37 @@ export class AuthService {
     await this.logAudit(null, 'USER_DELETED', { userId });
     return {
       message: 'Cuenta eliminada exitosamente',
+    };
+  }
+
+  async requestPasswordReset(dto: RequestPasswordResetDto) {
+    const rawIdentifier = dto.identifier ? dto.identifier.trim() : '';
+    if (!rawIdentifier) {
+      throw new BadRequestException('El identificador o matrícula es obligatorio');
+    }
+
+    const cleanStaffId = rawIdentifier.toUpperCase();
+
+    const user = await this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.staffProfile', 'staffProfile')
+      .where('user.userType = :userType', { userType: UserType.STAFF })
+      .andWhere(
+        '(UPPER(staffProfile.staffId) = :staffId OR UPPER(user.email) = :email)',
+        { staffId: cleanStaffId, email: rawIdentifier.toUpperCase() },
+      )
+      .getOne();
+
+    if (user && user.isActive) {
+      user.passwordResetRequested = true;
+      await this.userRepo.save(user);
+      await this.logAudit(user.id, 'PASSWORD_RESET_REQUESTED', {
+        staffId: user.staffProfile?.staffId,
+      });
+    }
+
+    return {
+      message: 'Solicitud de cambio de contraseña enviada exitosamente',
     };
   }
 
