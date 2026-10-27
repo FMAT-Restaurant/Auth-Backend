@@ -26,6 +26,11 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
 
+// Hash bcrypt (costo 10) de una cadena aleatoria descartada. Solo se usa para
+// igualar el tiempo de respuesta cuando el usuario no existe.
+const DUMMY_PASSWORD_HASH =
+  '$2b$10$rCXTkqe0qZpcAUhkUikG7uyLuSmNv4h.IjpS8qRzBrzj3Bfw59mAe';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -149,13 +154,13 @@ export class AuthService {
     }
 
     if (!user?.isActive) {
+      // Se hace la misma comparación bcrypt que con un usuario real para que el
+      // tiempo de respuesta no revele si el usuario existe (enumeración de usuarios).
+      await this.isPasswordMatch(dto.password, DUMMY_PASSWORD_HASH);
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');
     }
 
-    const cleanPassword = dto.password ? dto.password.trim() : '';
-    const isPasswordValid =
-      (await bcrypt.compare(dto.password, user.passwordHash)) ||
-      (await bcrypt.compare(cleanPassword, user.passwordHash));
+    const isPasswordValid = await this.isPasswordMatch(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       await this.logAudit(user.id, 'LOGIN_FAILED', { identifier });
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');
@@ -407,6 +412,14 @@ export class AuthService {
     return {
       message: 'Solicitud de cambio de contraseña enviada exitosamente',
     };
+  }
+
+  private async isPasswordMatch(password: string, hash: string): Promise<boolean> {
+    const cleanPassword = password ? password.trim() : '';
+    return (
+      (await bcrypt.compare(password, hash)) ||
+      (await bcrypt.compare(cleanPassword, hash))
+    );
   }
 
   private extractPermissions(user: User): string[] {
