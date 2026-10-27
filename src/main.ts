@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { applySecurity } from './common/security/security.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  applySecurity(app);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
