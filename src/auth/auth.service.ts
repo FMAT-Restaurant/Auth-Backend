@@ -26,13 +26,18 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
 
-// Hash bcrypt (costo 10) de una cadena aleatoria descartada. Solo se usa para
-// igualar el tiempo de respuesta cuando el usuario no existe.
-const DUMMY_PASSWORD_HASH =
-  '$2b$10$rCXTkqe0qZpcAUhkUikG7uyLuSmNv4h.IjpS8qRzBrzj3Bfw59mAe';
-
 @Injectable()
 export class AuthService {
+  /**
+   * Hash bcrypt de un valor aleatorio generado al arrancar el servicio (nunca se
+   * guarda ni se escribe en el código). Solo se usa para que el login tarde lo
+   * mismo exista o no el usuario, y así no se pueda saber qué usuarios existen.
+   */
+  private readonly timingReferenceHash: Promise<string> = bcrypt.hash(
+    crypto.randomBytes(32).toString('hex'),
+    10,
+  );
+
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
@@ -156,7 +161,7 @@ export class AuthService {
     if (!user?.isActive) {
       // Se hace la misma comparación bcrypt que con un usuario real para que el
       // tiempo de respuesta no revele si el usuario existe (enumeración de usuarios).
-      await this.isPasswordMatch(dto.password, DUMMY_PASSWORD_HASH);
+      await this.isPasswordMatch(dto.password, await this.timingReferenceHash);
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');
     }
 
