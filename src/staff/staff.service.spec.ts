@@ -310,6 +310,35 @@ describe('StaffService', () => {
     });
   });
 
+  describe('[SEC] contraseñas temporales', () => {
+    const buildQb = (user: any) => ({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(user),
+    });
+
+    it('debería generar contraseñas con formato Fmat-XXXX-XXXX y 8 caracteres aleatorios', async () => {
+      const user = { id: 'usr-1', staffProfile: { staffId: 'M000001' } };
+      userRepo.createQueryBuilder.mockReturnValue(buildQb(user));
+
+      const result = await service.resetPassword('usr-1', {});
+
+      expect(result.temporaryPassword).toMatch(/^Fmat-[A-HJ-NP-Z2-9!#]{4}-[A-HJ-NP-Z2-9!#]{4}$/);
+    });
+
+    it('no debería repetir contraseñas temporales (ya no son solo 9,000 combinaciones)', async () => {
+      const generated = new Set<string>();
+      for (let i = 0; i < 50; i++) {
+        const user = { id: `usr-${i}`, staffProfile: { staffId: 'M000001' } };
+        userRepo.createQueryBuilder.mockReturnValue(buildQb(user));
+        const result = await service.resetPassword(`usr-${i}`, {});
+        generated.add(result.temporaryPassword);
+      }
+      expect(generated.size).toBe(50);
+    });
+  });
+
   describe('updateStaff', () => {
     it('debería actualizar información del empleado correctamente', async () => {
       const user = {
