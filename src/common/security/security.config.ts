@@ -5,6 +5,7 @@ import helmet from 'helmet';
 /**
  * Orígenes locales (cualquier puerto). Cubre el shell de Auth (3000/5173)
  * y los microfrontends de los demás equipos (5174-5178) durante el desarrollo.
+ * Solo se aceptan automáticamente fuera de producción (#22).
  */
 const LOCAL_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -24,9 +25,10 @@ export function parseAllowedOrigins(raw?: string): string[] {
 export function isOriginAllowed(
   origin: string | undefined,
   extraOrigins: string[],
+  allowLocalOrigins = true,
 ): boolean {
   if (!origin) return true;
-  if (LOCAL_ORIGIN_REGEX.test(origin)) return true;
+  if (allowLocalOrigins && LOCAL_ORIGIN_REGEX.test(origin)) return true;
   return extraOrigins.includes(origin);
 }
 
@@ -105,12 +107,14 @@ export function applySecurity(app: NestExpressApplication): void {
   });
 
   const extraOrigins = parseAllowedOrigins(process.env.CORS_ORIGINS);
+  // En producción solo valen los orígenes de CORS_ORIGINS (#22).
+  const allowLocalOrigins = process.env.NODE_ENV !== 'production';
   app.enableCors({
     origin: (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      callback(null, isOriginAllowed(origin, extraOrigins));
+      callback(null, isOriginAllowed(origin, extraOrigins, allowLocalOrigins));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

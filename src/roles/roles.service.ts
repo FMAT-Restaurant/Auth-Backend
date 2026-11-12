@@ -10,7 +10,10 @@ import { Repository } from 'typeorm';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
-import { SYSTEM_PERMISSIONS_CATALOG } from './catalog/permissions-catalog';
+import {
+  SYSTEM_PERMISSIONS_CATALOG,
+  SYSTEM_PERMISSION_CODES,
+} from './catalog/permissions-catalog';
 
 @Injectable()
 export class RolesService implements OnModuleInit {
@@ -142,6 +145,12 @@ export class RolesService implements OnModuleInit {
       roleCode = `ROL_${roleCode}`;
     }
 
+    if (roleCode.length > 50) {
+      throw new BadRequestException(
+        'El código del rol generado es demasiado largo (máximo 50 caracteres); usa un nombre más corto o un código',
+      );
+    }
+
     const existing = await this.roleRepo.findOne({ where: { code: roleCode } });
     if (existing) {
       throw new ConflictException(
@@ -153,7 +162,7 @@ export class RolesService implements OnModuleInit {
       code: roleCode,
       name: dto.name.trim(),
       description: dto.description?.trim() || `Rol personalizado de ${dto.name.trim()}`,
-      permissions: dto.permissions || [],
+      permissions: this.validatePermissions(dto.permissions),
       isAssignable: true,
       isSystemRole: false,
     });
@@ -163,6 +172,12 @@ export class RolesService implements OnModuleInit {
 
   async updateRole(code: string, dto: UpdateRoleDto): Promise<Role> {
     const role = await this.findRoleByCode(code);
+
+    // El rol ADMINISTRADOR no se puede modificar: quitarle permisos dejaría al
+    // sistema sin administración (#18).
+    if (role.code === RoleEnum.ADMINISTRADOR) {
+      throw new BadRequestException('El rol ADMINISTRADOR no se puede modificar');
+    }
 
     if (dto.name !== undefined) {
       if (role.isSystemRole) {
@@ -178,10 +193,28 @@ export class RolesService implements OnModuleInit {
     }
 
     if (dto.permissions !== undefined) {
-      role.permissions = dto.permissions;
+      role.permissions = this.validatePermissions(dto.permissions);
     }
 
     return this.roleRepo.save(role);
+  }
+
+  /**
+   * Solo se aceptan permisos del catálogo. El comodín "*" (acceso total) queda
+   * reservado al rol ADMINISTRADOR y no se puede dar a un rol personalizado (#18).
+   */
+  private validatePermissions(permissions: string[] | undefined): string[] {
+    const unique = Array.from(new Set((permissions ?? []).map((p) => String(p).trim())));
+    if (unique.includes('*')) {
+      throw new BadRequestException(
+        'El permiso "*" (acceso total) solo pertenece al rol ADMINISTRADOR',
+      );
+    }
+    const unknown = unique.filter((p) => !SYSTEM_PERMISSION_CODES.has(p));
+    if (unknown.length > 0) {
+      throw new BadRequestException(`Permisos no válidos: ${unknown.join(', ')}`);
+    }
+    return unique;
   }
 
   async deleteRole(code: string): Promise<{ message: string; code: string }> {

@@ -47,3 +47,40 @@ describe('[SEC #16] Contraseñas sin espacios al inicio ni al final', () => {
     ).not.toHaveLength(0);
   });
 });
+
+describe('[SEC #19] Límites de longitud en los DTO', () => {
+  const long = (n: number) => 'a'.repeat(n);
+
+  it('rechaza nombres de más de 100 caracteres al crear personal', () => {
+    expect(
+      errorsFor(CreateStaffDto, { firstName: long(101), lastName: 'B', roles: ['MESERO'] }, 'firstName'),
+    ).not.toHaveLength(0);
+    expect(
+      errorsFor(CreateStaffDto, { firstName: long(100), lastName: 'B', roles: ['MESERO'] }, 'firstName'),
+    ).toHaveLength(0);
+  });
+
+  it('rechaza teléfonos de más de 30 caracteres', () => {
+    expect(
+      errorsFor(CreateStaffDto, { firstName: 'A', lastName: 'B', roles: ['MESERO'], phone: long(31) }, 'phone'),
+    ).not.toHaveLength(0);
+  });
+
+  it('rechaza códigos de rol de más de 50 caracteres', () => {
+    expect(
+      errorsFor(CreateStaffDto, { firstName: 'A', lastName: 'B', roles: [long(80)] }, 'roles'),
+    ).not.toHaveLength(0);
+  });
+
+  it('rechaza contraseñas temporales de más de 72 caracteres (límite de bcrypt)', () => {
+    expect(
+      errorsFor(ResetPasswordDto, { temporaryPassword: long(73) }, 'temporaryPassword'),
+    ).not.toHaveLength(0);
+  });
+
+  it('rechaza nombres largos en setup-admin', () => {
+    expect(
+      errorsFor(SetupAdminDto, { email: 'a@fmat.mx', password: 'Clave12345', firstName: long(500) }, 'firstName'),
+    ).not.toHaveLength(0);
+  });
+});

@@ -125,6 +125,56 @@ describe('RolesService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
     });
+    it('[SEC #18] no permite cambiar los permisos del rol ADMINISTRADOR', async () => {
+      roleRepo.findOne.mockResolvedValue({
+        code: RoleEnum.ADMINISTRADOR,
+        name: 'Administrador General',
+        permissions: ['*'],
+        isSystemRole: true,
+      });
+
+      await expect(
+        service.updateRole(RoleEnum.ADMINISTRADOR, { permissions: [] }),
+      ).rejects.toThrow(BadRequestException);
+      expect(roleRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('[SEC #18] no permite dar "*" a un rol al actualizarlo', async () => {
+      roleRepo.findOne.mockResolvedValue({
+        code: 'ROL_BARISTA',
+        name: 'Barista',
+        permissions: ['orders:view'],
+        isSystemRole: false,
+      });
+
+      await expect(
+        service.updateRole('ROL_BARISTA', { permissions: ['orders:view', '*'] }),
+      ).rejects.toThrow(BadRequestException);
+      expect(roleRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('[SEC #18] permisos de roles personalizados', () => {
+    it('rechaza el permiso "*" al crear un rol', async () => {
+      await expect(
+        service.createRole({ name: 'Super', permissions: ['*'] }),
+      ).rejects.toThrow(BadRequestException);
+      expect(roleRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza permisos que no están en el catálogo', async () => {
+      await expect(
+        service.createRole({ name: 'Raro', permissions: ['orders:view', 'root:all'] }),
+      ).rejects.toThrow(/root:all/);
+    });
+
+    it('acepta permisos del catálogo y quita duplicados', async () => {
+      const role = await service.createRole({
+        name: 'Barista',
+        permissions: ['orders:view', 'menu:view', 'orders:view'],
+      });
+      expect(role.permissions).toEqual(['orders:view', 'menu:view']);
+    });
   });
 
   describe('deleteRole', () => {
