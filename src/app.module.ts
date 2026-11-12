@@ -9,22 +9,20 @@ import { RolesModule } from './roles/roles.module';
 import { EventsModule } from './events/events.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { validateEnv } from './common/config/env.validation';
+import { buildAuthThrottlers } from './common/security/rate-limit.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate: validateEnv,
     }),
     // Límite de intentos para los endpoints públicos de autenticación
     // (se aplica solo donde se usa ThrottlerGuard, ver AuthController).
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60_000,
-        limit: Number(process.env.AUTH_RATE_LIMIT ?? 10),
-      },
-    ]),
+    // Por IP y por cuenta (ver rate-limit.config.ts).
+    ThrottlerModule.forRoot(buildAuthThrottlers()),
     DatabaseModule,
     AuthModule,
     StaffModule,
