@@ -449,10 +449,14 @@ export class StaffService {
         return 'H';
       case RoleEnum.ALMACENISTA:
         return 'A';
+      case RoleEnum.GESTOR_MENU:
+        return 'G';
       case RoleEnum.MESERO:
         return 'M';
       case RoleEnum.CHEF_MASTER:
         return 'C';
+      case RoleEnum.CAJERO:
+        return 'J';
       default: {
         const stripped = clean.startsWith('ROL_') ? clean.replace(/^ROL_/, '') : clean;
         const char = stripped.charAt(0);
