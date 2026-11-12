@@ -42,26 +42,51 @@ export class RolesService implements OnModuleInit {
       },
       {
         code: RoleEnum.MESERO,
-        name: 'Mesero / Salonero',
-        description: 'Atención a comensales, toma de pedidos y visualización de mesas',
+        name: 'Mesero / Órdenes',
+        description: 'Captura, consulta y gestión de órdenes de comensales',
         permissions: [
-          'orders:view',
-          'orders:create',
-          'menu:view',
-          'sala:tables:view',
+          'orders:orders:view',
+          'orders:orders:create',
+          'orders:orders:update',
+          'orders:orders:confirm',
+          'orders:orders:cancel',
+          'orders:orders:transfer',
+          'orders:items:redo',
+          'orders:orders:request_bill',
         ],
         isAssignable: true,
         isSystemRole: true,
       },
       {
         code: RoleEnum.CHEF_MASTER,
-        name: 'Chef Ejecutivo / Cocina',
+        name: 'Chef / Cocina',
         description: 'Control de pantalla KDS, preparación de comandas y estado de platillos',
         permissions: [
-          'kitchen:kds:view',
-          'kitchen:order:start_preparation',
-          'kitchen:order:mark_ready',
-          'orders:view',
+          'kitchen:queues:view',
+          'kitchen:orders:start_preparation',
+          'kitchen:items:ready',
+          'kitchen:orders:ready',
+          'kitchen:items:reject',
+          'kitchen:items:cancel',
+          'kitchen:orders:void_error',
+          'orders:orders:view',
+        ],
+        isAssignable: true,
+        isSystemRole: true,
+      },
+      {
+        code: RoleEnum.GESTOR_MENU,
+        name: 'Gestor de Menú',
+        description: 'Administración del catálogo de platillos, categorías, recetas y promociones',
+        permissions: [
+          'menu:entries:view',
+          'menu:entries:manage',
+          'menu:categories:view',
+          'menu:categories:manage',
+          'menu:recipes:view',
+          'menu:recipes:manage',
+          'menu:offers:view',
+          'menu:offers:manage',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -71,10 +96,15 @@ export class RolesService implements OnModuleInit {
         name: 'Almacenista / Bodega',
         description: 'Gestión de existencias, compras, inventario e insumos',
         permissions: [
-          'inventory:view',
-          'inventory:ingredients:create',
-          'inventory:stock:update_status',
-          'inventory:ingredients:delete',
+          'inventory:items:read',
+          'inventory:items:write',
+          'inventory:batches:read',
+          'inventory:batches:write',
+          'inventory:suppliers:read',
+          'inventory:suppliers:write',
+          'inventory:recipes:read',
+          'inventory:reservations:read',
+          'inventory:movements:read',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -82,11 +112,35 @@ export class RolesService implements OnModuleInit {
       {
         code: RoleEnum.HOST,
         name: 'Host / Recepción',
-        description: 'Recepción de comensales y distribución en mesas',
+        description: 'Recepción de comensales, gestión de mesas, reservas y lista de espera',
         permissions: [
           'sala:tables:view',
-          'sala:tables:assign_diner',
+          'sala:tables:occupy',
+          'sala:tables:update_status',
           'sala:tables:assign_waiter',
+          'sala:assignments:view',
+          'sala:table_unions:view',
+          'sala:table_unions:create',
+          'sala:table_unions:release',
+          'sala:reservations:view',
+          'sala:reservations:create',
+          'sala:reservations:update',
+          'sala:reservations:cancel',
+          'sala:reservations:mark_no_show',
+          'sala:waitlist_entries:view',
+          'sala:waitlist_entries:create',
+          'sala:waitlist_entries:update_status',
+        ],
+        isAssignable: true,
+        isSystemRole: true,
+      },
+      {
+        code: RoleEnum.CAJERO,
+        name: 'Cajero / Facturación',
+        description: 'Cobro de cuentas, emisión de comprobantes y reportes de caja',
+        permissions: [
+          'billing:invoices:create',
+          'billing:reports:view',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -98,7 +152,7 @@ export class RolesService implements OnModuleInit {
       if (!existing) {
         const role = this.roleRepo.create(def);
         await this.roleRepo.save(role);
-      } else if (!existing.permissions || existing.permissions.length === 0) {
+      } else {
         existing.permissions = def.permissions;
         existing.isSystemRole = true;
         await this.roleRepo.save(existing);
@@ -138,7 +192,10 @@ export class RolesService implements OnModuleInit {
           .filter(Boolean)
           .join('_')}`;
 
-    if (!roleCode.startsWith('ROL_') && !['HOST', 'ALMACENISTA', 'MESERO', 'CHEF_MASTER'].includes(roleCode)) {
+    if (
+      !roleCode.startsWith('ROL_') &&
+      !['HOST', 'ALMACENISTA', 'GESTOR_MENU', 'MESERO', 'CHEF_MASTER', 'CAJERO'].includes(roleCode)
+    ) {
       roleCode = `ROL_${roleCode}`;
     }
 

@@ -4,8 +4,10 @@ export enum RoleEnum {
   ADMINISTRADOR = 'ADMINISTRADOR',
   HOST = 'HOST',
   ALMACENISTA = 'ALMACENISTA',
+  GESTOR_MENU = 'GESTOR_MENU',
   MESERO = 'MESERO',
   CHEF_MASTER = 'CHEF_MASTER',
+  CAJERO = 'CAJERO',
 }
 
 @Entity('roles')
