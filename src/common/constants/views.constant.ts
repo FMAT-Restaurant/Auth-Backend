@@ -7,6 +7,7 @@ export const ROLE_VIEWS_MAP: Record<RoleEnum, string[]> = {
     'sala-view',
     'menu-view',
     'orders-view',
+    'kitchen-view',
     'inventory-view',
     'billing-view',
   ],
