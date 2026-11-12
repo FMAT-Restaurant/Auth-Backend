@@ -87,7 +87,6 @@ export class StaffService {
       email: null,
       passwordHash,
       passwordStatus: PasswordStatus.TEMPORARY,
-      temporaryPassword: tempPassword,
       isActive: true,
       roles: roleEntities,
     });
@@ -114,6 +113,8 @@ export class StaffService {
       isActive: true,
     });
 
+    // La contraseña temporal solo se guarda como hash y se muestra una única vez,
+    // en esta respuesta (#14). El listado y el detalle ya no la devuelven.
     return {
       message: 'Miembro del personal registrado exitosamente',
       staffId,
@@ -158,8 +159,6 @@ export class StaffService {
       isActive: u.isActive,
       passwordStatus: u.passwordStatus,
       passwordResetRequested: Boolean(u.passwordResetRequested),
-      temporaryPassword:
-        u.passwordStatus === PasswordStatus.TEMPORARY ? u.temporaryPassword : null,
       createdAt: u.createdAt,
     }));
   }
@@ -190,8 +189,6 @@ export class StaffService {
       isActive: user.isActive,
       passwordStatus: user.passwordStatus,
       passwordResetRequested: Boolean(user.passwordResetRequested),
-      temporaryPassword:
-        user.passwordStatus === PasswordStatus.TEMPORARY ? user.temporaryPassword : null,
       createdAt: user.createdAt,
     };
   }
@@ -228,6 +225,8 @@ export class StaffService {
     });
 
     user.roles = roleEntities;
+    // Los access tokens con los roles anteriores dejan de valer (#15).
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
     // Publicar evento RabbitMQ
@@ -263,6 +262,10 @@ export class StaffService {
     }
 
     user.isActive = dto.isActive;
+    if (!dto.isActive) {
+      // Invalida también los access tokens que aún no expiran (#15).
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    }
     await this.userRepo.save(user);
 
     // Si se desactiva, revocar sesiones activas de inmediato (BR-AUTH-014)
@@ -325,11 +328,13 @@ export class StaffService {
         where: { code: In(dto.roles) },
       });
       user.roles = roleEntities;
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     }
 
     if (dto.isActive !== undefined) {
       user.isActive = dto.isActive;
       if (!user.isActive) {
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
         await this.refreshTokenRepo.update(
           { userId: user.id, isRevoked: false },
           { isRevoked: true },
@@ -401,8 +406,9 @@ export class StaffService {
       this.generateRandomTempPassword();
     user.passwordHash = await bcrypt.hash(tempPassword, 10);
     user.passwordStatus = PasswordStatus.TEMPORARY;
-    user.temporaryPassword = tempPassword;
     user.passwordResetRequested = false;
+    // Las sesiones abiertas con la contraseña anterior dejan de valer (#15).
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
     // Revocar sesiones activas

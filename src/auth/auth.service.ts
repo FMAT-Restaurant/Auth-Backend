@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'node:crypto';
@@ -50,71 +50,71 @@ export class AuthService {
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
     private readonly jwtService: JwtService,
+    private readonly dataSource: DataSource,
   ) {}
 
+  /** Clave del bloqueo de Postgres que serializa las llamadas a setup-admin. */
+  private static readonly SETUP_ADMIN_LOCK_KEY = 74_201_901;
+
+  private static readonly INITIAL_ADMIN_STAFF_ID = 'ADM000001';
+
+  /**
+   * El sistema se considera configurado en cuanto existe cualquier usuario.
+   * Antes solo se buscaba un ADMIN, así que al borrar la única cuenta de
+   * administrador setup-admin volvía a quedar abierto para cualquiera (#12).
+   */
   async getSetupStatus(): Promise<{ configured: boolean }> {
-    const admin = await this.userRepo.findOne({
-      where: { userType: UserType.ADMIN },
-    });
+    const users = await this.userRepo.count();
     return {
-      configured: Boolean(admin),
+      configured: users > 0,
     };
   }
 
   async setupAdmin(dto: SetupAdminDto) {
-    const existingAdmin = await this.userRepo.findOne({
-      where: { userType: UserType.ADMIN },
-    });
-    if (existingAdmin) {
-      throw new ConflictException(
-        'El administrador inicial ya ha sido configurado en el sistema',
-      );
-    }
+    const email = dto.email.toLowerCase().trim();
 
-    const existingUser = await this.userRepo.findOne({
-      where: { email: dto.email.toLowerCase().trim() },
-    });
-    if (existingUser) {
-      throw new ConflictException(
-        'El correo electrónico ya se encuentra registrado en el sistema',
-      );
-    }
+    // Comprobación e inserción dentro de una sola transacción con un bloqueo de
+    // Postgres: si llegan varias peticiones a la vez, se atienden una por una y
+    // solo la primera crea al administrador (#13). El usuario y su perfil se
+    // guardan juntos, así que un fallo no deja cuentas a medias.
+    const adminUser = await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock($1)', [
+        AuthService.SETUP_ADMIN_LOCK_KEY,
+      ]);
 
-    let adminRole = await this.roleRepo.findOne({
-      where: { code: RoleEnum.ADMINISTRADOR },
-    });
-    if (!adminRole) {
-      adminRole = this.roleRepo.create({
-        code: RoleEnum.ADMINISTRADOR,
-        name: 'Administrador',
-        description: 'Propietario / Gerente con control total del sistema local',
-        isAssignable: false,
+      const existingUsers = await manager.count(User);
+      if (existingUsers > 0) {
+        throw new ConflictException(
+          'El administrador inicial ya ha sido configurado en el sistema',
+        );
+      }
+
+      const adminRole = await this.ensureAdminRole(manager);
+
+      const passwordHash = await bcrypt.hash(dto.password, 10);
+      const user = manager.create(User, {
+        userType: UserType.ADMIN,
+        email,
+        passwordHash,
+        passwordStatus: PasswordStatus.ACTIVE,
+        isActive: true,
+        roles: [adminRole],
       });
-      await this.roleRepo.save(adminRole);
-    }
+      await manager.save(user);
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-    const adminUser = this.userRepo.create({
-      userType: UserType.ADMIN,
-      email: dto.email.toLowerCase().trim(),
-      passwordHash,
-      passwordStatus: PasswordStatus.ACTIVE,
-      isActive: true,
-      roles: [adminRole],
+      const profile = manager.create(StaffProfile, {
+        userId: user.id,
+        staffId: AuthService.INITIAL_ADMIN_STAFF_ID,
+        firstName: dto.firstName?.trim() || 'Admin',
+        lastName: dto.lastName?.trim() || 'Principal',
+        phone: '',
+      });
+      await manager.save(profile);
+      user.staffProfile = profile;
+      return user;
     });
-    await this.userRepo.save(adminUser);
 
-    const staffId = 'ADM000001';
-    const profile = this.staffProfileRepo.create({
-      userId: adminUser.id,
-      staffId,
-      firstName: dto.firstName?.trim() || 'Admin',
-      lastName: dto.lastName?.trim() || 'Principal',
-      phone: '',
-    });
-    await this.staffProfileRepo.save(profile);
-    adminUser.staffProfile = profile;
-
+    const staffId = AuthService.INITIAL_ADMIN_STAFF_ID;
     const tokens = await this.generateTokens(adminUser, staffId);
 
     await this.logAudit(adminUser.id, 'SETUP_ADMIN', {
@@ -132,6 +132,21 @@ export class AuthService {
       },
       ...tokens,
     };
+  }
+
+  private async ensureAdminRole(manager: EntityManager): Promise<Role> {
+    const existing = await manager.findOne(Role, {
+      where: { code: RoleEnum.ADMINISTRADOR },
+    });
+    if (existing) return existing;
+
+    const role = manager.create(Role, {
+      code: RoleEnum.ADMINISTRADOR,
+      name: 'Administrador',
+      description: 'Propietario / Gerente con control total del sistema local',
+      isAssignable: false,
+    });
+    return manager.save(role);
   }
 
   async login(dto: LoginDto) {
@@ -203,19 +218,18 @@ export class AuthService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    const cleanCurrent = dto.currentPassword ? dto.currentPassword.trim() : '';
-    const cleanNew = dto.newPassword ? dto.newPassword.trim() : '';
-
-    const isMatch =
-      (await bcrypt.compare(dto.currentPassword, user.passwordHash)) ||
-      (await bcrypt.compare(cleanCurrent, user.passwordHash));
+    // Las contraseñas se usan tal cual, sin recortar espacios (#16): antes se
+    // validaba la longitud con espacios y se guardaba recortada, lo que permitía
+    // contraseñas efectivas de 1 carácter.
+    const isMatch = await this.isPasswordMatch(dto.currentPassword, user.passwordHash);
     if (!isMatch) {
       throw new BadRequestException('La contraseña actual ingresada es incorrecta');
     }
 
-    user.passwordHash = await bcrypt.hash(cleanNew, 10);
+    user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
     user.passwordStatus = PasswordStatus.ACTIVE;
-    user.temporaryPassword = null;
+    // Invalida los access tokens emitidos con la contraseña anterior (#15).
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
     await this.refreshTokenRepo.update(
@@ -266,6 +280,8 @@ export class AuthService {
       { userId, isRevoked: false },
       { isRevoked: true },
     );
+    // Cierra también los access tokens que sigan vigentes (#15).
+    await this.userRepo.increment({ id: userId }, 'tokenVersion', 1);
     await this.logAudit(userId, 'LOGOUT', {});
     return { message: 'Sesión cerrada exitosamente' };
   }
@@ -375,6 +391,17 @@ export class AuthService {
       );
     }
 
+    // Si el único administrador pudiera borrarse, el sistema se quedaría sin
+    // administración (#12).
+    const activeAdmins = await this.userRepo.count({
+      where: { userType: UserType.ADMIN, isActive: true },
+    });
+    if (activeAdmins <= 1) {
+      throw new ConflictException(
+        'No se puede eliminar la única cuenta de Administrador del sistema',
+      );
+    }
+
     await this.refreshTokenRepo.update(
       { userId, isRevoked: false },
       { isRevoked: true },
@@ -419,12 +446,12 @@ export class AuthService {
     };
   }
 
+  /** Una sola comparación, con la contraseña exactamente como se escribió (#16). */
   private async isPasswordMatch(password: string, hash: string): Promise<boolean> {
-    const cleanPassword = password ? password.trim() : '';
-    return (
-      (await bcrypt.compare(password, hash)) ||
-      (await bcrypt.compare(cleanPassword, hash))
-    );
+    if (typeof password !== 'string' || password.length === 0) {
+      return false;
+    }
+    return bcrypt.compare(password, hash);
   }
 
   private extractPermissions(user: User): string[] {
@@ -461,6 +488,7 @@ export class AuthService {
       roles,
       permissions,
       mustChangePassword,
+      tv: user.tokenVersion ?? 0,
     };
 
     const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcrypt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { StaffService } from './staff.service';
@@ -118,6 +119,21 @@ describe('StaffService', () => {
       );
     });
 
+    it('[SEC #14] guarda solo el hash de la contraseña temporal y la devuelve una vez', async () => {
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.MESERO }]);
+
+      const result = await service.createStaff({
+        firstName: 'Juan',
+        lastName: 'Pérez',
+        roles: [RoleEnum.MESERO],
+      });
+
+      const savedUser = userRepo.save.mock.calls[0][0];
+      expect(savedUser).not.toHaveProperty('temporaryPassword');
+      expect(JSON.stringify(savedUser)).not.toContain(result.temporaryPassword);
+      expect(await bcrypt.compare(result.temporaryPassword, savedUser.passwordHash)).toBe(true);
+    });
+
     it('debería asignar el prefijo correcto según el rol primario', async () => {
       roleRepo.find.mockResolvedValue([
         { id: '1', code: RoleEnum.HOST, name: RoleEnum.HOST },
@@ -163,6 +179,30 @@ describe('StaffService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].staffId).toBe('M000001');
       expect(result[0].roles).toContain(RoleEnum.MESERO);
+    });
+
+    it('[SEC #14] no incluye contraseñas temporales en el listado', async () => {
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          {
+            id: 'usr-2',
+            isActive: true,
+            passwordStatus: PasswordStatus.TEMPORARY,
+            temporaryPassword: 'Fmat-ABCD-EFGH', // dato heredado de la columna antigua
+            createdAt: new Date(),
+            staffProfile: { staffId: 'M000002', firstName: 'Ana', lastName: 'Ruiz' },
+            roles: [{ code: RoleEnum.MESERO }],
+          },
+        ]),
+      };
+      userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.findAllStaff();
+      expect(result[0]).not.toHaveProperty('temporaryPassword');
+      expect(JSON.stringify(result)).not.toContain('Fmat-ABCD-EFGH');
     });
   });
 
@@ -241,6 +281,8 @@ describe('StaffService', () => {
       });
 
       expect(result.roles).toEqual([RoleEnum.MESERO, RoleEnum.HOST]);
+      // [SEC #15] los tokens con los roles anteriores dejan de valer
+      expect(userRepo.save).toHaveBeenCalledWith(expect.objectContaining({ tokenVersion: 1 }));
       expect(eventsService.publishStaffRolesUpdated).toHaveBeenCalledWith(
         expect.objectContaining({
           staffId: 'M000001',
@@ -271,6 +313,8 @@ describe('StaffService', () => {
       });
 
       expect(result.isActive).toBe(false);
+      // [SEC #15] también se invalidan los access tokens vigentes
+      expect(userRepo.save).toHaveBeenCalledWith(expect.objectContaining({ tokenVersion: 1 }));
       expect(refreshTokenRepo.update).toHaveBeenCalledWith(
         { userId: 'usr-1', isRevoked: false },
         { isRevoked: true },
@@ -307,6 +351,11 @@ describe('StaffService', () => {
       expect(user.passwordStatus).toBe(PasswordStatus.TEMPORARY);
       expect(user.passwordResetRequested).toBe(false);
       expect(refreshTokenRepo.update).toHaveBeenCalled();
+      // [SEC #14] la contraseña temporal no se guarda en claro
+      expect(user).not.toHaveProperty('temporaryPassword');
+      expect(await bcrypt.compare(result.temporaryPassword, user.passwordHash)).toBe(true);
+      // [SEC #15] las sesiones con la contraseña anterior dejan de valer
+      expect((user as any).tokenVersion).toBe(1);
     });
   });
 
