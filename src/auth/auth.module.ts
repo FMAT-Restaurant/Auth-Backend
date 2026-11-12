@@ -13,6 +13,7 @@ import { AuditLog } from '../database/entities/audit-log.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { assertValidJwtSecret } from '../common/config/env.validation';
 
 @Module({
   imports: [
@@ -28,10 +29,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>(
-          'JWT_SECRET',
-          'fmat-restaurant-auth-secret-key-2026',
-        ),
+        secret: assertValidJwtSecret(config.get<string>('JWT_SECRET')),
         signOptions: { expiresIn: '1h' },
       }),
     }),
