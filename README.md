@@ -61,10 +61,9 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
    # Base de datos
    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fmat_auth
 
-   # Secretos JWT
-   JWT_SECRET=super_secret_jwt_key_restaurant_auth_2026!
-   JWT_ACCESS_SECRET=secret_jwt_access_fmat_restaurant_2026
-   JWT_REFRESH_SECRET=secret_jwt_refresh_fmat_restaurant_2026
+   # Secreto JWT (obligatorio, mínimo 32 caracteres, el mismo que usa el API Gateway).
+   # Genera uno con: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   JWT_SECRET=
 
    # RabbitMQ (opcional en desarrollo offline)
    RABBITMQ_URL=amqp://localhost:5672

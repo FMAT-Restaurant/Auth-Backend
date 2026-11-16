@@ -6,6 +6,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
+import { NoSurroundingWhitespace } from '../../common/validation/password.validation';
 
 export class CreateStaffDto {
   @IsString()
@@ -30,5 +31,6 @@ export class CreateStaffDto {
   @MinLength(6, {
     message: 'La contraseña temporal debe tener al menos 6 caracteres',
   })
+  @NoSurroundingWhitespace()
   initialPassword?: string;
 }

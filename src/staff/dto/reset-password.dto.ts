@@ -1,4 +1,5 @@
 import { IsOptional, IsString, MinLength } from 'class-validator';
+import { NoSurroundingWhitespace } from '../../common/validation/password.validation';
 
 export class ResetPasswordDto {
   @IsString()
@@ -6,5 +7,6 @@ export class ResetPasswordDto {
   @MinLength(6, {
     message: 'La nueva contraseña temporal debe tener al menos 6 caracteres',
   })
+  @NoSurroundingWhitespace()
   temporaryPassword?: string;
 }
