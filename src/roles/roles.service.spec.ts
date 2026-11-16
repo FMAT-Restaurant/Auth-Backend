@@ -88,6 +88,18 @@ describe('RolesService', () => {
         }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('no debería anteponer ROL_ cuando el código pertenece a un rol reservado del sistema', async () => {
+      roleRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.createRole({
+        name: 'Cajero',
+        code: 'CAJERO',
+        permissions: ['billing:invoices:create'],
+      });
+
+      expect(result.code).toBe('CAJERO');
+    });
   });
 
   describe('updateRole', () => {
