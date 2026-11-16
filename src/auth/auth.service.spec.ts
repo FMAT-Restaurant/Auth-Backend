@@ -182,6 +182,29 @@ describe('AuthService', () => {
       expect(result.user.staffId).toBe('M000001');
     });
 
+    it('[SEC] debería hacer una comparación bcrypt aunque el usuario no exista (evita enumeración por tiempo)', async () => {
+      userRepo.findOne.mockResolvedValue(null);
+      const compareSpy = jest.spyOn(bcrypt, 'compare');
+
+      await expect(
+        service.login({ identifier: 'noexiste@test.com', password: 'Cualquiera123' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(compareSpy).toHaveBeenCalled();
+      compareSpy.mockRestore();
+    });
+
+    it('[SEC] debería responder el mismo mensaje para usuario inexistente y contraseña incorrecta', async () => {
+      userRepo.findOne.mockResolvedValueOnce(null);
+      const noUser = service.login({ identifier: 'noexiste@test.com', password: 'x' });
+      await expect(noUser).rejects.toThrow('Credenciales inválidas o cuenta deshabilitada');
+
+      const hash = await bcrypt.hash('CorrectPass', 10);
+      userRepo.findOne.mockResolvedValueOnce({ id: 'usr-1', passwordHash: hash, isActive: true });
+      const wrongPass = service.login({ identifier: 'admin@test.com', password: 'WrongPass' });
+      await expect(wrongPass).rejects.toThrow('Credenciales inválidas o cuenta deshabilitada');
+    });
+
     it('debería rechazar login si la contraseña es incorrecta', async () => {
       const hash = await bcrypt.hash('CorrectPass', 10);
       userRepo.findOne.mockResolvedValue({

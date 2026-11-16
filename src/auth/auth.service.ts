@@ -28,6 +28,16 @@ import { resolveViewsForRoles } from '../common/constants/views.constant';
 
 @Injectable()
 export class AuthService {
+  /**
+   * Hash bcrypt de un valor aleatorio generado al arrancar el servicio (nunca se
+   * guarda ni se escribe en el código). Solo se usa para que el login tarde lo
+   * mismo exista o no el usuario, y así no se pueda saber qué usuarios existen.
+   */
+  private readonly timingReferenceHash: Promise<string> = bcrypt.hash(
+    crypto.randomBytes(32).toString('hex'),
+    10,
+  );
+
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
@@ -149,13 +159,13 @@ export class AuthService {
     }
 
     if (!user?.isActive) {
+      // Se hace la misma comparación bcrypt que con un usuario real para que el
+      // tiempo de respuesta no revele si el usuario existe (enumeración de usuarios).
+      await this.isPasswordMatch(dto.password, await this.timingReferenceHash);
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');
     }
 
-    const cleanPassword = dto.password ? dto.password.trim() : '';
-    const isPasswordValid =
-      (await bcrypt.compare(dto.password, user.passwordHash)) ||
-      (await bcrypt.compare(cleanPassword, user.passwordHash));
+    const isPasswordValid = await this.isPasswordMatch(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       await this.logAudit(user.id, 'LOGIN_FAILED', { identifier });
       throw new UnauthorizedException('Credenciales inválidas o cuenta deshabilitada');
@@ -407,6 +417,14 @@ export class AuthService {
     return {
       message: 'Solicitud de cambio de contraseña enviada exitosamente',
     };
+  }
+
+  private async isPasswordMatch(password: string, hash: string): Promise<boolean> {
+    const cleanPassword = password ? password.trim() : '';
+    return (
+      (await bcrypt.compare(password, hash)) ||
+      (await bcrypt.compare(cleanPassword, hash))
+    );
   }
 
   private extractPermissions(user: User): string[] {

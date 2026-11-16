@@ -437,9 +437,17 @@ export class StaffService {
     }
   }
 
+  /**
+   * Genera una contraseña temporal con formato legible `Fmat-XXXX-XXXX`.
+   * Usa 8 caracteres aleatorios de un alfabeto de 32 símbolos sin caracteres
+   * ambiguos (sin 0/O, 1/I/L), es decir 32^8 ≈ 1.1 billones de combinaciones.
+   * Antes eran solo 9,000 (`Fmat` + 4 dígitos), adivinables por fuerza bruta.
+   */
   private generateRandomTempPassword(): string {
-    const numbers = crypto.randomInt(1000, 10000);
-    return `Fmat${numbers}!`;
+    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789!#';
+    const pick = () => alphabet[crypto.randomInt(0, alphabet.length)];
+    const block = () => Array.from({ length: 4 }, pick).join('');
+    return `Fmat-${block()}-${block()}`;
   }
 
   private getRolePrefix(role: string): string {
