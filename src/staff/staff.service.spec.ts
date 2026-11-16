@@ -133,6 +133,26 @@ describe('StaffService', () => {
 
       expect(result.staffId).toBe('H000011');
     });
+
+    it.each([
+      { role: RoleEnum.GESTOR_MENU, expectedPrefix: 'G' },
+      { role: RoleEnum.CAJERO, expectedPrefix: 'J' },
+    ])(
+      'debería asignar el prefijo $expectedPrefix para el rol $role',
+      async ({ role, expectedPrefix }) => {
+        roleRepo.find.mockResolvedValue([{ id: '1', code: role, name: role }]);
+        staffProfileRepo.count.mockResolvedValue(10);
+        staffProfileRepo.findOne.mockResolvedValue(null);
+
+        const result = await service.createStaff({
+          firstName: 'Luis',
+          lastName: 'Torres',
+          roles: [role],
+        });
+
+        expect(result.staffId).toBe(`${expectedPrefix}000011`);
+      },
+    );
   });
 
   describe('findAllStaff', () => {
