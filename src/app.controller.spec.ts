@@ -1,14 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { EventsService } from './events/events.service';
 
 describe('AppController', () => {
   let appController: AppController;
+  let eventsService: { isConnected: jest.Mock };
 
   beforeEach(async () => {
+    eventsService = { isConnected: jest.fn().mockReturnValue(true) };
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [AppService, { provide: EventsService, useValue: eventsService }],
     }).compile();
 
     appController = app.get<AppController>(AppController);
@@ -25,8 +28,15 @@ describe('AppController', () => {
     it('should return health status', () => {
       const response = appController.getHealth();
       expect(response).toHaveProperty('status', 'healthy');
-      expect(response).toHaveProperty('timestamp');
+      expect(response.dependencies).toEqual({ rabbitmq: 'connected' });
       expect(new Date(response.timestamp).toString()).not.toBe('Invalid Date');
+    });
+
+    it('[SEC #11] reporta "degraded" si RabbitMQ no está conectado', () => {
+      eventsService.isConnected.mockReturnValue(false);
+      const response = appController.getHealth();
+      expect(response.status).toBe('degraded');
+      expect(response.dependencies.rabbitmq).toBe('disconnected');
     });
   });
 });

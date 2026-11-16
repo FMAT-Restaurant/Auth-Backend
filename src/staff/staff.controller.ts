@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleEnum } from '../database/entities/role.entity';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('api/v1/staff')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -38,10 +39,10 @@ export class StaffController {
   async findAllStaff(
     @Query('role') role?: string,
     @Query('isActive') isActive?: string,
+    @Query('passwordResetRequested') passwordResetRequested?: string,
   ) {
-    const activeBool =
-      isActive === undefined ? undefined : isActive === 'true';
-    return this.staffService.findAllStaff(role, activeBool);
+    const toBool = (value?: string) => (value === undefined ? undefined : value === 'true');
+    return this.staffService.findAllStaff(role, toBool(isActive), toBool(passwordResetRequested));
   }
 
   @Get(':id')
@@ -82,8 +83,9 @@ export class StaffController {
   @HttpCode(HttpStatus.OK)
   async resetPassword(
     @Param('id') id: string,
+    @CurrentUser('userId') adminId: string,
     @Body() dto?: ResetPasswordDto,
   ) {
-    return this.staffService.resetPassword(id, dto);
+    return this.staffService.resetPassword(id, dto, adminId);
   }
 }

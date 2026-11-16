@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
-import { AuthService } from './auth.service';
+import { AuthService, refreshTokenTtlMs } from './auth.service';
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
@@ -337,6 +337,66 @@ describe('AuthService', () => {
     });
   });
 
+  describe('Vida del refresh token (Auth-Frontend #6)', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+
+    it('dura 7 días por defecto', () => {
+      expect(refreshTokenTtlMs({})).toBe(7 * DAY);
+    });
+
+    it('se puede configurar con REFRESH_TOKEN_TTL_DAYS', () => {
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: '1' })).toBe(DAY);
+    });
+
+    it('ignora valores inválidos o mayores a 30 días', () => {
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: 'abc' })).toBe(7 * DAY);
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: '0' })).toBe(7 * DAY);
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: '365' })).toBe(7 * DAY);
+    });
+
+    it('el refresh token emitido en el login vence en 7 días', async () => {
+      const hash = await bcrypt.hash('CorrectPassword123!', 10);
+      userRepo.findOne.mockResolvedValue({
+        id: 'usr-1',
+        email: 'admin@test.com',
+        passwordHash: hash,
+        passwordStatus: PasswordStatus.ACTIVE,
+        isActive: true,
+        roles: [{ code: RoleEnum.ADMINISTRADOR }],
+        staffProfile: { staffId: 'ADM000001' },
+      });
+
+      const before = Date.now();
+      await service.login({ identifier: 'admin@test.com', password: 'CorrectPassword123!' });
+
+      const saved = refreshTokenRepo.save.mock.calls[0][0];
+      const ttl = saved.expiresAt.getTime() - before;
+      expect(ttl).toBeGreaterThanOrEqual(7 * DAY - 1000);
+      expect(ttl).toBeLessThanOrEqual(7 * DAY + 1000);
+    });
+  });
+
+  describe('[SEC #18] permiso "*" solo para el administrador', () => {
+    it('un rol personalizado con "*" guardado no le da acceso total a un empleado', async () => {
+      const hash = await bcrypt.hash('Clave12345', 10);
+      userRepo.findOne.mockResolvedValue(null);
+      staffProfileRepo.findOne.mockResolvedValue({
+        staffId: 'M000009',
+        user: {
+          id: 'usr-9',
+          userType: UserType.STAFF,
+          passwordHash: hash,
+          passwordStatus: PasswordStatus.ACTIVE,
+          isActive: true,
+          roles: [{ code: 'ROL_SUPER', permissions: ['*', 'orders:view'] }],
+        },
+      });
+
+      const result = await service.login({ identifier: 'M000009', password: 'Clave12345' });
+      expect(result.user.permissions).toEqual(['orders:view']);
+    });
+  });
+
   describe('changeInitialPassword', () => {
     it('debería cambiar la contraseña temporal y promover a ACTIVE', async () => {
       const hash = await bcrypt.hash('OldTempPass', 10);
@@ -592,7 +652,7 @@ describe('AuthService', () => {
 
       const result = await service.requestPasswordReset({ identifier: 'M000001' });
 
-      expect(result.message).toBe('Solicitud de cambio de contraseña enviada exitosamente');
+      expect(result.message).toBe('Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.');
       expect(staffUser.passwordResetRequested).toBe(true);
       expect(userRepo.save).toHaveBeenCalledWith(staffUser);
       expect(auditLogRepo.create).toHaveBeenCalledWith(
@@ -613,7 +673,7 @@ describe('AuthService', () => {
 
       const result = await service.requestPasswordReset({ identifier: 'INEXISTENTE' });
 
-      expect(result.message).toBe('Solicitud de cambio de contraseña enviada exitosamente');
+      expect(result.message).toBe('Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.');
       expect(userRepo.save).not.toHaveBeenCalled();
     });
 

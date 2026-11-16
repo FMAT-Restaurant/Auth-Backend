@@ -12,6 +12,7 @@ import { User, UserType, PasswordStatus } from '../database/entities/user.entity
 import { StaffProfile } from '../database/entities/staff-profile.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
 import { EventsService } from '../events/events.service';
 
 import { CreateStaffDto } from './dto/create-staff.dto';
@@ -31,47 +32,17 @@ export class StaffService {
     private readonly roleRepo: Repository<Role>,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepo: Repository<RefreshToken>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepo: Repository<AuditLog>,
     private readonly eventsService: EventsService,
   ) {}
 
   async createStaff(dto: CreateStaffDto) {
-    // 1. Validar no-asignabilidad del rol ADMINISTRADOR (BR-AUTH-002, REQ-AUTH-008)
-    if (dto.roles.includes(RoleEnum.ADMINISTRADOR)) {
-      throw new BadRequestException(
-        'El rol ADMINISTRADOR no es asignable al personal operativo',
-      );
-    }
-
-    if (!dto.roles || dto.roles.length === 0) {
-      throw new BadRequestException(
-        'Debe asignar al menos un rol operativo al empleado',
-      );
-    }
-
-    // 2. Obtener las entidades de los roles solicitados
-    const roleEntities = await this.roleRepo.find({
-      where: { code: In(dto.roles) },
-    });
-
-    if (roleEntities.length !== dto.roles.length) {
-      // Si algún rol no existe en la BD, crearlo
-      for (const roleCode of dto.roles) {
-        let role = roleEntities.find((r) => r.code === roleCode);
-        if (!role) {
-          role = this.roleRepo.create({
-            code: roleCode,
-            name: roleCode,
-            description: `Rol de ${roleCode}`,
-            isAssignable: true,
-          });
-          await this.roleRepo.save(role);
-          roleEntities.push(role);
-        }
-      }
-    }
+    // 1-2. Solo roles existentes y asignables; ya no se crean roles al vuelo (#18).
+    const roleEntities = await this.resolveAssignableRoles(dto.roles);
 
     // 3. Generar ID único XYYYYYY (BR-AUTH-004, BR-AUTH-005, BR-AUTH-006, INV-AUTH-003)
-    const primaryRole = dto.roles[0];
+    const primaryRole = roleEntities[0].code;
     const prefix = this.getRolePrefix(primaryRole);
     const staffId = await this.generateUniqueStaffId(prefix);
 
@@ -109,7 +80,7 @@ export class StaffService {
       staffId,
       firstName: profile.firstName,
       lastName: profile.lastName,
-      roles: dto.roles,
+      roles: roleEntities.map((r) => r.code),
       isActive: true,
     });
 
@@ -124,14 +95,14 @@ export class StaffService {
         staffId,
         firstName: profile.firstName,
         lastName: profile.lastName,
-        roles: dto.roles,
+        roles: roleEntities.map((r) => r.code),
         passwordStatus: user.passwordStatus,
         isActive: user.isActive,
       },
     };
   }
 
-  async findAllStaff(role?: string, isActive?: boolean) {
+  async findAllStaff(role?: string, isActive?: boolean, passwordResetRequested?: boolean) {
     const query = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
@@ -144,6 +115,13 @@ export class StaffService {
 
     if (role) {
       query.andWhere('role.code = :role', { role });
+    }
+
+    // Permite al panel listar solo las solicitudes de reseteo pendientes (#23).
+    if (passwordResetRequested !== undefined) {
+      query.andWhere('user.passwordResetRequested = :passwordResetRequested', {
+        passwordResetRequested,
+      });
     }
 
     const users = await query.getMany();
@@ -194,17 +172,7 @@ export class StaffService {
   }
 
   async updateRoles(id: string, dto: UpdateStaffRolesDto) {
-    if (dto.roles.includes(RoleEnum.ADMINISTRADOR)) {
-      throw new BadRequestException(
-        'El rol ADMINISTRADOR no es asignable al personal operativo',
-      );
-    }
-
-    if (!dto.roles || dto.roles.length === 0) {
-      throw new BadRequestException(
-        'El personal debe conservar al menos un rol operativo',
-      );
-    }
+    const roleEntities = await this.resolveAssignableRoles(dto.roles);
 
     const qb = this.userRepo
       .createQueryBuilder('user')
@@ -220,10 +188,6 @@ export class StaffService {
       throw new NotFoundException('Miembro del personal no encontrado');
     }
 
-    const roleEntities = await this.roleRepo.find({
-      where: { code: In(dto.roles) },
-    });
-
     user.roles = roleEntities;
     // Los access tokens con los roles anteriores dejan de valer (#15).
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
@@ -235,14 +199,14 @@ export class StaffService {
       staffId: user.staffProfile?.staffId || '',
       firstName: user.staffProfile?.firstName || '',
       lastName: user.staffProfile?.lastName || '',
-      roles: dto.roles,
+      roles: roleEntities.map((r) => r.code),
       isActive: user.isActive,
     });
 
     return {
       message: 'Roles de personal actualizados exitosamente',
       staffId: user.staffProfile?.staffId,
-      roles: dto.roles,
+      roles: roleEntities.map((r) => r.code),
     };
   }
 
@@ -319,15 +283,7 @@ export class StaffService {
     }
 
     if (dto.roles && dto.roles.length > 0) {
-      if (dto.roles.includes(RoleEnum.ADMINISTRADOR)) {
-        throw new BadRequestException(
-          'El rol ADMINISTRADOR no es asignable al personal operativo',
-        );
-      }
-      const roleEntities = await this.roleRepo.find({
-        where: { code: In(dto.roles) },
-      });
-      user.roles = roleEntities;
+      user.roles = await this.resolveAssignableRoles(dto.roles);
       user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     }
 
@@ -387,7 +343,7 @@ export class StaffService {
     };
   }
 
-  async resetPassword(id: string, dto?: ResetPasswordDto) {
+  async resetPassword(id: string, dto?: ResetPasswordDto, adminId?: string) {
     const qb = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
@@ -404,6 +360,7 @@ export class StaffService {
     const tempPassword =
       dto?.temporaryPassword ||
       this.generateRandomTempPassword();
+    const hadPendingRequest = Boolean(user.passwordResetRequested);
     user.passwordHash = await bcrypt.hash(tempPassword, 10);
     user.passwordStatus = PasswordStatus.TEMPORARY;
     user.passwordResetRequested = false;
@@ -417,12 +374,67 @@ export class StaffService {
       { isRevoked: true },
     );
 
+    // Queda registrado qué administrador atendió el reseteo (#23).
+    await this.logAudit(adminId ?? null, 'PASSWORD_RESET_BY_ADMIN', {
+      targetUserId: user.id,
+      staffId: user.staffProfile?.staffId,
+      hadPendingRequest,
+    });
+
     return {
       message:
         'Contraseña restablecida exitosamente. El empleado deberá cambiarla en su siguiente ingreso.',
       staffId: user.staffProfile?.staffId,
       temporaryPassword: tempPassword,
     };
+  }
+
+  /**
+   * Convierte los códigos recibidos en roles existentes y asignables (#18).
+   * Antes, un código desconocido (por ejemplo "administrador" en minúsculas)
+   * se creaba como rol nuevo, y los roles no asignables se podían asignar.
+   */
+  private async resolveAssignableRoles(codes: string[] | undefined): Promise<Role[]> {
+    const normalized = Array.from(
+      new Set((codes ?? []).map((c) => String(c).trim().toUpperCase()).filter(Boolean)),
+    );
+
+    if (normalized.length === 0) {
+      throw new BadRequestException('Debe asignar al menos un rol operativo al empleado');
+    }
+
+    if (normalized.includes(RoleEnum.ADMINISTRADOR)) {
+      throw new BadRequestException(
+        'El rol ADMINISTRADOR no es asignable al personal operativo',
+      );
+    }
+
+    const found = await this.roleRepo.find({ where: { code: In(normalized) } });
+    const byCode = new Map(found.map((r) => [String(r.code).toUpperCase(), r]));
+
+    const missing = normalized.filter((code) => !byCode.has(code));
+    if (missing.length > 0) {
+      throw new BadRequestException(`Los siguientes roles no existen: ${missing.join(', ')}`);
+    }
+
+    const notAssignable = normalized.filter((code) => byCode.get(code)?.isAssignable === false);
+    if (notAssignable.length > 0) {
+      throw new BadRequestException(
+        `Los siguientes roles no se pueden asignar: ${notAssignable.join(', ')}`,
+      );
+    }
+
+    return normalized.map((code) => byCode.get(code) as Role);
+  }
+
+  private async logAudit(userId: string | null, action: string, details: object) {
+    try {
+      await this.auditLogRepo.save(
+        this.auditLogRepo.create({ userId, action, details: JSON.stringify(details) }),
+      );
+    } catch {
+      // La auditoría no debe interrumpir la operación principal.
+    }
   }
 
   private applyUserOrStaffIdFilter(

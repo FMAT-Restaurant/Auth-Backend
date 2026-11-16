@@ -34,6 +34,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@auth-db:5432/fmat_auth}
       # Obligatorio y sin valor por defecto: debe ser el mismo que usa el API Gateway.
       JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env}
+      # Broker de eventos. Sin él el servicio funciona, pero /health responde "degraded".
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://host.docker.internal:5672}
+      # Con NODE_ENV=production solo se aceptan estos orígenes por CORS.
+      # Por defecto, el shell de Auth y los microfrontends locales.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,http://localhost:5178}
     ports:
       - "${PORT:-4000}:3000"
     depends_on:

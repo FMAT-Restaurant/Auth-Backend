@@ -16,9 +16,11 @@ export class SetupAdminDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(100, { message: 'El nombre no puede exceder 100 caracteres' })
   firstName?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(100, { message: 'Los apellidos no pueden exceder 100 caracteres' })
   lastName?: string;
 }

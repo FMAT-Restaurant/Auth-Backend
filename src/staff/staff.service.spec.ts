@@ -7,6 +7,7 @@ import { User, PasswordStatus } from '../database/entities/user.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
 import { EventsService } from '../events/events.service';
 
 describe('StaffService', () => {
@@ -15,6 +16,7 @@ describe('StaffService', () => {
   let staffProfileRepo: any;
   let roleRepo: any;
   let refreshTokenRepo: any;
+  let auditLogRepo: any;
   let eventsService: any;
 
   beforeEach(async () => {
@@ -44,6 +46,11 @@ describe('StaffService', () => {
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
 
+    auditLogRepo = {
+      create: jest.fn((entity) => entity),
+      save: jest.fn().mockResolvedValue({}),
+    };
+
     eventsService = {
       publishStaffCreated: jest.fn().mockResolvedValue(undefined),
       publishStaffRolesUpdated: jest.fn().mockResolvedValue(undefined),
@@ -58,6 +65,7 @@ describe('StaffService', () => {
         { provide: getRepositoryToken(StaffProfile), useValue: staffProfileRepo },
         { provide: getRepositoryToken(Role), useValue: roleRepo },
         { provide: getRepositoryToken(RefreshToken), useValue: refreshTokenRepo },
+        { provide: getRepositoryToken(AuditLog), useValue: auditLogRepo },
         { provide: EventsService, useValue: eventsService },
       ],
     }).compile();
@@ -148,6 +156,73 @@ describe('StaffService', () => {
       });
 
       expect(result.staffId).toBe('H000011');
+    });
+  });
+
+  describe('[SEC #18] asignación de roles', () => {
+    const userQb = (user: any) => ({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(user),
+    });
+
+    it('no crea roles que no existen', async () => {
+      roleRepo.find.mockResolvedValue([]);
+
+      await expect(
+        service.createStaff({ firstName: 'Eva', lastName: 'Paz', roles: ['ROL_INVENTADO'] }),
+      ).rejects.toThrow(/no existen: ROL_INVENTADO/);
+      expect(roleRepo.save).not.toHaveBeenCalled();
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('"administrador" en minúsculas se trata como ADMINISTRADOR y se rechaza', async () => {
+      await expect(
+        service.createStaff({ firstName: 'Eva', lastName: 'Paz', roles: ['administrador'] }),
+      ).rejects.toThrow(/ADMINISTRADOR no es asignable/);
+      expect(roleRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('respeta isAssignable', async () => {
+      roleRepo.find.mockResolvedValue([{ code: 'ROL_GERENTE', isAssignable: false }]);
+
+      await expect(
+        service.createStaff({ firstName: 'Eva', lastName: 'Paz', roles: ['ROL_GERENTE'] }),
+      ).rejects.toThrow(/no se pueden asignar: ROL_GERENTE/);
+    });
+
+    it('normaliza mayúsculas y duplicados al asignar', async () => {
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.MESERO, isAssignable: true }]);
+
+      const result = await service.createStaff({
+        firstName: 'Eva',
+        lastName: 'Paz',
+        roles: ['mesero', ' MESERO '],
+      });
+      expect(result.user.roles).toEqual([RoleEnum.MESERO]);
+    });
+
+    it('updateRoles también rechaza roles inexistentes', async () => {
+      userRepo.createQueryBuilder.mockReturnValue(userQb({ id: 'usr-1', roles: [] }));
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.HOST, isAssignable: true }]);
+
+      await expect(
+        service.updateRoles('usr-1', { roles: [RoleEnum.HOST, 'ROL_NO_EXISTE'] }),
+      ).rejects.toThrow(BadRequestException);
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('updateStaff también rechaza roles inexistentes', async () => {
+      userRepo.createQueryBuilder.mockReturnValue(
+        userQb({ id: 'usr-1', roles: [], staffProfile: { firstName: 'A', lastName: 'B' } }),
+      );
+      roleRepo.find.mockResolvedValue([]);
+
+      await expect(
+        service.updateStaff('usr-1', { roles: ['ROL_NO_EXISTE'] }),
+      ).rejects.toThrow(BadRequestException);
+      expect(userRepo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -356,6 +431,35 @@ describe('StaffService', () => {
       expect(await bcrypt.compare(result.temporaryPassword, user.passwordHash)).toBe(true);
       // [SEC #15] las sesiones con la contraseña anterior dejan de valer
       expect((user as any).tokenVersion).toBe(1);
+    });
+
+    it('[#23] registra en la auditoría qué administrador atendió el reseteo', async () => {
+      const user = {
+        id: 'usr-1',
+        passwordHash: 'old-hash',
+        passwordStatus: PasswordStatus.ACTIVE,
+        passwordResetRequested: true,
+        staffProfile: { staffId: 'M000001' },
+      };
+      userRepo.createQueryBuilder.mockReturnValue({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(user),
+      });
+
+      const result = await service.resetPassword('usr-1', {}, 'adm-1');
+
+      const entry = auditLogRepo.save.mock.calls[0][0];
+      expect(entry.userId).toBe('adm-1');
+      expect(entry.action).toBe('PASSWORD_RESET_BY_ADMIN');
+      expect(JSON.parse(entry.details)).toEqual({
+        targetUserId: 'usr-1',
+        staffId: 'M000001',
+        hadPendingRequest: true,
+      });
+      // La contraseña temporal nunca va a la auditoría.
+      expect(entry.details).not.toContain(result.temporaryPassword);
     });
   });
 

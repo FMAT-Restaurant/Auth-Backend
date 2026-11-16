@@ -44,6 +44,13 @@ describe('[SEC] Configuración de seguridad HTTP', () => {
       expect(isOriginAllowed('http://localhost.evil.com', [])).toBe(false);
     });
 
+    it('[SEC #22] en producción no acepta localhost salvo que esté en CORS_ORIGINS', () => {
+      expect(isOriginAllowed('http://localhost:6666', [], false)).toBe(false);
+      expect(isOriginAllowed('http://127.0.0.1:3000', [], false)).toBe(false);
+      expect(isOriginAllowed('http://localhost:5173', ['http://localhost:5173'], false)).toBe(true);
+      expect(isOriginAllowed(undefined, [], false)).toBe(true);
+    });
+
     it('permite orígenes agregados en CORS_ORIGINS', () => {
       const extra = parseAllowedOrigins(' https://restaurante.fmat.mx , https://otro.mx ');
       expect(extra).toEqual(['https://restaurante.fmat.mx', 'https://otro.mx']);

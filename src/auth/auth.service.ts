@@ -26,6 +26,20 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
 
+const DEFAULT_REFRESH_TOKEN_TTL_DAYS = 7;
+const MAX_REFRESH_TOKEN_TTL_DAYS = 30;
+
+/**
+ * Vida del refresh token en milisegundos (REFRESH_TOKEN_TTL_DAYS, 7 días por
+ * defecto). El frontend guarda la sesión en localStorage (Auth-Frontend #6), así
+ * que una vida corta limita lo que puede hacer alguien que llegue a robarla.
+ */
+export function refreshTokenTtlMs(env: NodeJS.ProcessEnv = process.env): number {
+  const days = Number(env.REFRESH_TOKEN_TTL_DAYS);
+  const valid = Number.isFinite(days) && days > 0 && days <= MAX_REFRESH_TOKEN_TTL_DAYS;
+  return (valid ? days : DEFAULT_REFRESH_TOKEN_TTL_DAYS) * 24 * 60 * 60 * 1000;
+}
+
 @Injectable()
 export class AuthService {
   /**
@@ -441,8 +455,12 @@ export class AuthService {
       });
     }
 
+    // No es un reseteo automático: se avisa al administrador, que asigna una
+    // contraseña temporal nueva desde el panel de personal (#23). El mensaje es
+    // el mismo exista o no la cuenta, para no revelar qué cuentas existen.
     return {
-      message: 'Solicitud de cambio de contraseña enviada exitosamente',
+      message:
+        'Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.',
     };
   }
 
@@ -464,7 +482,8 @@ export class AuthService {
       for (const r of user.roles) {
         if (r.permissions && Array.isArray(r.permissions)) {
           for (const p of r.permissions) {
-            permissions.add(p);
+            // "*" es exclusivo del administrador, aunque un rol lo tenga guardado (#18).
+            if (p !== '*') permissions.add(p);
           }
         }
       }
@@ -499,7 +518,7 @@ export class AuthService {
     const refreshTokenEntity = this.refreshTokenRepo.create({
       userId: user.id,
       tokenHash,
-      expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 días
+      expiresAt: new Date(Date.now() + refreshTokenTtlMs()),
       isRevoked: false,
     });
     await this.refreshTokenRepo.save(refreshTokenEntity);
