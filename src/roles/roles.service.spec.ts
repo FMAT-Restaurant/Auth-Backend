@@ -68,7 +68,7 @@ describe('RolesService', () => {
       const result = await service.createRole({
         name: 'Barista',
         description: 'Preparación de bebidas y café',
-        permissions: ['orders:view', 'menu:view'],
+        permissions: ['orders:orders:view', 'menu:entries:view'],
       });
 
       expect(result.code).toBe('ROL_BARISTA');
@@ -84,9 +84,21 @@ describe('RolesService', () => {
         service.createRole({
           name: 'Barista',
           code: 'ROL_BARISTA',
-          permissions: ['orders:view'],
+          permissions: ['orders:orders:view'],
         }),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('no debería anteponer ROL_ cuando el código pertenece a un rol reservado del sistema', async () => {
+      roleRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.createRole({
+        name: 'Cajero',
+        code: 'CAJERO',
+        permissions: ['billing:invoices:create'],
+      });
+
+      expect(result.code).toBe('CAJERO');
     });
   });
 
@@ -96,18 +108,18 @@ describe('RolesService', () => {
         code: 'ROL_BARISTA',
         name: 'Barista',
         description: 'Desc',
-        permissions: ['orders:view'],
+        permissions: ['orders:orders:view'],
         isSystemRole: false,
       };
       roleRepo.findOne.mockResolvedValue(customRole);
 
       const result = await service.updateRole('ROL_BARISTA', {
         name: 'Barista Principal',
-        permissions: ['orders:view', 'inventory:view'],
+        permissions: ['orders:orders:view', 'inventory:items:read'],
       });
 
       expect(result.name).toBe('Barista Principal');
-      expect(result.permissions).toContain('inventory:view');
+      expect(result.permissions).toContain('inventory:items:read');
       expect(roleRepo.save).toHaveBeenCalled();
     });
 
@@ -143,12 +155,12 @@ describe('RolesService', () => {
       roleRepo.findOne.mockResolvedValue({
         code: 'ROL_BARISTA',
         name: 'Barista',
-        permissions: ['orders:view'],
+        permissions: ['orders:orders:view'],
         isSystemRole: false,
       });
 
       await expect(
-        service.updateRole('ROL_BARISTA', { permissions: ['orders:view', '*'] }),
+        service.updateRole('ROL_BARISTA', { permissions: ['orders:orders:view', '*'] }),
       ).rejects.toThrow(BadRequestException);
       expect(roleRepo.save).not.toHaveBeenCalled();
     });
@@ -164,16 +176,16 @@ describe('RolesService', () => {
 
     it('rechaza permisos que no están en el catálogo', async () => {
       await expect(
-        service.createRole({ name: 'Raro', permissions: ['orders:view', 'root:all'] }),
+        service.createRole({ name: 'Raro', permissions: ['orders:orders:view', 'root:all'] }),
       ).rejects.toThrow(/root:all/);
     });
 
     it('acepta permisos del catálogo y quita duplicados', async () => {
       const role = await service.createRole({
         name: 'Barista',
-        permissions: ['orders:view', 'menu:view', 'orders:view'],
+        permissions: ['orders:orders:view', 'menu:entries:view', 'orders:orders:view'],
       });
-      expect(role.permissions).toEqual(['orders:view', 'menu:view']);
+      expect(role.permissions).toEqual(['orders:orders:view', 'menu:entries:view']);
     });
   });
 
