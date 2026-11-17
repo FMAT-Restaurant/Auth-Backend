@@ -62,7 +62,7 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fmat_auth
 
    # Secreto JWT (obligatorio, mínimo 32 caracteres, el mismo que usa el API Gateway).
-   # Genera uno con: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   # Ver "Cómo obtener JWT_SECRET" más abajo. Nunca lo subas al repositorio.
    JWT_SECRET=
 
    # RabbitMQ (opcional en desarrollo offline)
@@ -132,10 +132,21 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
 ### Variables de seguridad
 | Variable | Uso |
 | --- | --- |
-| `JWT_SECRET` | Obligatoria, mínimo 32 caracteres, igual a la del API Gateway. |
+| `JWT_SECRET` | Obligatoria, mínimo 32 caracteres, igual a la del API Gateway. Ver "Cómo obtener JWT_SECRET". |
 | `CORS_ORIGINS` | Orígenes permitidos. En producción solo valen los de esta lista. |
 | `AUTH_RATE_LIMIT` | Intentos por minuto e IP en login y recuperación de contraseña. |
 | `AUTH_IDENTIFIER_RATE_LIMIT` / `AUTH_IDENTIFIER_WINDOW_MINUTES` | Intentos por cuenta y duración del bloqueo. |
 | `TRUST_PROXY` | Proxies de confianza para `X-Forwarded-For` (por defecto, solo el proxy privado inmediato). |
 | `RABBITMQ_URL` | Broker de eventos. Sin conexión, `/health` responde `degraded`. |
 | `REFRESH_TOKEN_TTL_DAYS` | Días que dura un refresh token sin usarse (1 a 30, por defecto 7). Cada renovación emite uno nuevo y revoca el anterior. |
+
+### Cómo obtener `JWT_SECRET`
+El valor real **nunca se guarda en el repositorio** (ni en `.env.example`, ni en `docker-compose.yml`, ni en issues o PRs).
+
+- **Entorno compartido (servidor del restaurante, staging o integración con el API Gateway):** solicita el valor al responsable del repositorio de Auth (equipo Auth). Se entrega por un canal privado, nunca por el chat del equipo ni en un commit. Debe ser idéntico al del API Gateway; si no, todas las peticiones responderán 401.
+- **Desarrollo local aislado** (sin API Gateway compartido): puedes generar uno propio:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ```
+  Si después conectas tu instancia al Gateway, usa el mismo valor en ambos.
+- **Si sospechas que se filtró:** avisa al responsable del repositorio. Se genera uno nuevo y se actualiza en Auth y en el API Gateway; todas las sesiones se cierran al cambiarlo.
