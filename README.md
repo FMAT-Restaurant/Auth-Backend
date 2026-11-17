@@ -13,7 +13,7 @@ API REST centralizada para la autenticación, autorización basada en permisos (
 * **Seguridad:** JWT (Access Tokens y Refresh Tokens con rotación segura), bcrypt para hash de contraseñas
 * **Eventos:** RabbitMQ (publicación de eventos de dominio: `staff.created`, `staff.updated`, etc.)
 * **Contenedores:** Docker & Docker Compose (Multi-stage build)
-* **Pruebas y Calidad:** Jest (60 pruebas unitarias y de integración) y ESLint
+* **Pruebas y Calidad:** Jest (185 pruebas unitarias y de integración en 15 suites) y ESLint
 
 ---
 
@@ -98,21 +98,29 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
 * `POST /auth/refresh` — Renovación de tokens mediante Refresh Token.
 * `PATCH /auth/profile` — Modificación de información personal del usuario autenticado.
 * `POST /auth/request-password-reset` — Solicitud al Administrador para que asigne una contraseña temporal nueva (no es un reseteo automático).
+* `DELETE /auth/account` — Eliminación protegida de la cuenta del usuario autenticado.
 * `POST /auth/logout` — Cierre de sesión: revoca el refresh token y los access tokens vigentes.
 
-### Personal Operativo (`/staff`) *(Requiere rol ADMINISTRADOR)*
-* `GET /staff` — Listado de colaboradores, identificadores (`M000001`, `C000001`, etc.) y estado. `?passwordResetRequested=true` muestra solo las solicitudes de reseteo pendientes.
+### Personal Operativo (`/staff`) *(Requiere rol ADMINISTRADOR, salvo lectura operativa PBAC en `GET /staff`)*
+* `GET /staff` — Listado de colaboradores, identificadores (`M000001`, `C000001`, etc.) y estado. Acepta lectura operativa por PBAC (`staff:view`, `sala:tables:view`, `sala:tables:occupy`, `sala:tables:assign_waiter`) devolviendo un perfil reducido sin datos sensibles; para `ADMINISTRADOR` incluye teléfono, permisos, estado de contraseña y soporta `?passwordResetRequested=true`.
 * `POST /staff` — Registro de nuevo colaborador, generación automática de Staff ID y clave temporal segura (se muestra solo en esta respuesta).
 * `GET /staff/:id` — Expediente detallado del colaborador por UUID o Staff ID.
 * `PATCH /staff/:id` — Actualización de nombres, apellidos, roles o estado activo/inactivo.
+* `PUT /staff/:id/roles` — Reemplazo de roles asignados al colaborador.
+* `PATCH /staff/:id/status` — Activación o suspensión del colaborador (revoca tokens activos al desactivar).
 * `POST /staff/:id/reset-password` — Asigna una contraseña temporal nueva (se muestra solo en esta respuesta) y registra en la auditoría qué administrador lo hizo.
 * `DELETE /staff/:id` — Eliminación protegida del colaborador (exclusiva del administrador).
 
 ### Roles y Permisos PBAC (`/roles`) *(Requiere rol ADMINISTRADOR)*
 * `GET /roles` — Listado de roles del sistema y roles personalizados con sus permisos.
-* `GET /roles/catalog` — Catálogo agrupado de permisos por microservicio (Inventario, Cocina/KDS, Pedidos/POS, etc.).
+* `GET /roles/catalog` — Catálogo agrupado de permisos por microservicio (Inventario, Cocina/KDS, Pedidos/POS, Menú, Sala, Facturación y Personal).
+* `GET /roles/:code` — Consulta detallada de un rol por código.
 * `POST /roles` — Creación de nuevos roles basados en permisos seleccionados.
 * `PATCH /roles/:code` — Modificación de nombre, descripción y permisos de roles personalizados.
+* `DELETE /roles/:code` — Eliminación de roles personalizados (protegido para roles del sistema).
+
+### Salud del Servicio
+* `GET /health` — Estado operativo del microservicio y conexión con base de datos y RabbitMQ.
 
 ---
 

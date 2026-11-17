@@ -21,6 +21,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { RoleEnum } from '../database/entities/role.entity';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -36,13 +37,27 @@ export class StaffController {
   }
 
   @Get()
+  @RequirePermissions(
+    'staff:view',
+    'sala:tables:view',
+    'sala:tables:occupy',
+    'sala:tables:assign_waiter',
+  )
   async findAllStaff(
     @Query('role') role?: string,
     @Query('isActive') isActive?: string,
     @Query('passwordResetRequested') passwordResetRequested?: string,
+    @CurrentUser('roles') callerRoles?: string[],
   ) {
     const toBool = (value?: string) => (value === undefined ? undefined : value === 'true');
-    return this.staffService.findAllStaff(role, toBool(isActive), toBool(passwordResetRequested));
+    const isAdmin =
+      Array.isArray(callerRoles) && callerRoles.includes(RoleEnum.ADMINISTRADOR);
+    return this.staffService.findAllStaff(
+      role,
+      toBool(isActive),
+      isAdmin ? toBool(passwordResetRequested) : undefined,
+      isAdmin,
+    );
   }
 
   @Get(':id')

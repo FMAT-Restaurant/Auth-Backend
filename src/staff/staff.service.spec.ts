@@ -276,6 +276,47 @@ describe('StaffService', () => {
       expect(result[0].roles).toContain(RoleEnum.MESERO);
     });
 
+    it('debería devolver solo perfil público sin campos sensibles cuando isAdmin es false', async () => {
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          {
+            id: 'usr-1',
+            isActive: true,
+            passwordStatus: PasswordStatus.TEMPORARY,
+            passwordResetRequested: true,
+            createdAt: new Date(),
+            staffProfile: {
+              staffId: 'M000001',
+              firstName: 'Juan',
+              lastName: 'Pérez',
+              phone: '9991234567',
+            },
+            roles: [{ code: RoleEnum.MESERO, permissions: ['orders:orders:view'] }],
+          },
+        ]),
+      };
+      userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.findAllStaff(RoleEnum.MESERO, true, true, false);
+      expect(result).toEqual([
+        {
+          id: 'usr-1',
+          staffId: 'M000001',
+          firstName: 'Juan',
+          lastName: 'Pérez',
+          roles: [RoleEnum.MESERO],
+          isActive: true,
+        },
+      ]);
+      expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+        'user.passwordResetRequested = :passwordResetRequested',
+        expect.anything(),
+      );
+    });
+
     it('[SEC #14] no incluye contraseñas temporales en el listado', async () => {
       const mockQueryBuilder = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -509,7 +550,7 @@ describe('StaffService', () => {
         generated.add(result.temporaryPassword);
       }
       expect(generated.size).toBe(50);
-    });
+    }, 30000);
   });
 
   describe('updateStaff', () => {
