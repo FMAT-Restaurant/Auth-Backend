@@ -2,6 +2,8 @@ import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@ne
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { PasswordStatus } from '../../database/entities/user.entity';
+import { ROLES_KEY } from '../decorators/roles.decorator';
+import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { RolesGuard } from './roles.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { TemporaryPasswordGuard } from './temporary-password.guard';
@@ -20,38 +22,79 @@ describe('Guards, JwtStrategy y Utilidades', () => {
     }) as unknown as ExecutionContext;
 
   describe('RolesGuard', () => {
-    it('debería permitir acceso cuando no hay roles requeridos', () => {
-      const reflector = { getAllAndOverride: jest.fn().mockReturnValue(undefined) } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+    const mockReflector = (roles?: RoleEnum[], permissions?: string[]) =>
+      ({
+        getAllAndOverride: jest.fn((key: string) => {
+          if (key === ROLES_KEY) return roles;
+          if (key === PERMISSIONS_KEY) return permissions;
+          return undefined;
+        }),
+      }) as unknown as Reflector;
+
+    it('debería permitir acceso cuando no hay roles ni permisos requeridos', () => {
+      const guard = new RolesGuard(mockReflector());
       expect(guard.canActivate(createMockContext())).toBe(true);
     });
 
     it('debería lanzar ForbiddenException si el usuario no tiene roles', () => {
-      const reflector = {
-        getAllAndOverride: jest.fn().mockReturnValue([RoleEnum.ADMINISTRADOR]),
-      } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
       expect(() => guard.canActivate(createMockContext(undefined))).toThrow(ForbiddenException);
     });
 
     it('debería lanzar ForbiddenException si el usuario no cuenta con el rol requerido', () => {
-      const reflector = {
-        getAllAndOverride: jest.fn().mockReturnValue([RoleEnum.ADMINISTRADOR]),
-      } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
       expect(() =>
         guard.canActivate(createMockContext({ roles: [RoleEnum.MESERO] })),
       ).toThrow(ForbiddenException);
     });
 
     it('debería permitir acceso cuando el usuario tiene el rol requerido', () => {
-      const reflector = {
-        getAllAndOverride: jest.fn().mockReturnValue([RoleEnum.ADMINISTRADOR]),
-      } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
       expect(
         guard.canActivate(createMockContext({ roles: [RoleEnum.ADMINISTRADOR] })),
       ).toBe(true);
+    });
+
+    it('debería permitir acceso por @RequirePermissions a roles personalizados con permiso válido', () => {
+      const guard = new RolesGuard(
+        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:assign_waiter']),
+      );
+      expect(
+        guard.canActivate(
+          createMockContext({
+            roles: ['ROL_CAPITAN'],
+            permissions: ['sala:tables:assign_waiter'],
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it('debería permitir acceso por @RequirePermissions a ADMINISTRADOR o comodín *', () => {
+      const guard = new RolesGuard(
+        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']),
+      );
+      expect(
+        guard.canActivate(
+          createMockContext({ roles: [RoleEnum.ADMINISTRADOR], permissions: [] }),
+        ),
+      ).toBe(true);
+      expect(
+        guard.canActivate(createMockContext({ roles: ['ROL_CUSTOM'], permissions: ['*'] })),
+      ).toBe(true);
+    });
+
+    it('debería denegar acceso por @RequirePermissions si no tiene ninguno de los permisos requeridos', () => {
+      const guard = new RolesGuard(
+        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']),
+      );
+      expect(() =>
+        guard.canActivate(
+          createMockContext({
+            roles: [RoleEnum.ALMACENISTA],
+            permissions: ['inventory:items:read'],
+          }),
+        ),
+      ).toThrow(ForbiddenException);
     });
   });
 
@@ -118,6 +161,26 @@ describe('Guards, JwtStrategy y Utilidades', () => {
         staffId: 'M000001',
         email: 'm@fmat.com',
         roles: ['MESERO'],
+        permissions: [],
+        mustChangePassword: false,
+      });
+    });
+
+    it('debería incluir y deduplicar los permisos efectivos de los roles del usuario', async () => {
+      userRepo.findOne.mockResolvedValue(
+        activeUser({
+          roles: [
+            { code: 'ROL_CAPITAN', permissions: ['sala:tables:view', 'sala:tables:assign_waiter'] },
+            { code: 'MESERO', permissions: ['sala:tables:view', 'orders:orders:view'] },
+          ],
+        }),
+      );
+      await expect(strategy.validate(payload())).resolves.toEqual({
+        userId: 'usr-1',
+        staffId: 'M000001',
+        email: 'm@fmat.com',
+        roles: ['ROL_CAPITAN', 'MESERO'],
+        permissions: ['sala:tables:view', 'sala:tables:assign_waiter', 'orders:orders:view'],
         mustChangePassword: false,
       });
     });

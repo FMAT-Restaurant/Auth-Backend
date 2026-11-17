@@ -57,11 +57,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('La sesión ya no es válida');
     }
 
+    const roles = user.roles ? user.roles.map((r) => r.code) : [];
+    const permissions = Array.from(
+      new Set((user.roles ?? []).flatMap((r) => r.permissions || [])),
+    );
+
     return {
       userId: user.id,
       staffId: payload.staffId,
       email: user.email,
-      roles: user.roles ? user.roles.map((r) => r.code) : [],
+      roles,
+      permissions,
       mustChangePassword: user.passwordStatus === PasswordStatus.TEMPORARY,
     };
   }

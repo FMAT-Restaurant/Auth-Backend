@@ -117,7 +117,7 @@ export function applySecurity(app: NestExpressApplication): void {
       callback(null, isOriginAllowed(origin, extraOrigins, allowLocalOrigins));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id'],
     maxAge: 600,
   });
 }

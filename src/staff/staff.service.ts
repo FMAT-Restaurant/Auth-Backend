@@ -102,7 +102,12 @@ export class StaffService {
     };
   }
 
-  async findAllStaff(role?: string, isActive?: boolean, passwordResetRequested?: boolean) {
+  async findAllStaff(
+    role?: string,
+    isActive?: boolean,
+    passwordResetRequested?: boolean,
+    isAdmin = true,
+  ) {
     const query = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'profile')
@@ -118,7 +123,7 @@ export class StaffService {
     }
 
     // Permite al panel listar solo las solicitudes de reseteo pendientes (#23).
-    if (passwordResetRequested !== undefined) {
+    if (isAdmin && passwordResetRequested !== undefined) {
       query.andWhere('user.passwordResetRequested = :passwordResetRequested', {
         passwordResetRequested,
       });
@@ -126,19 +131,29 @@ export class StaffService {
 
     const users = await query.getMany();
 
-    return users.map((u) => ({
-      id: u.id,
-      staffId: u.staffProfile?.staffId,
-      firstName: u.staffProfile?.firstName,
-      lastName: u.staffProfile?.lastName,
-      phone: u.staffProfile?.phone,
-      roles: u.roles.map((r) => r.code),
-      permissions: Array.from(new Set(u.roles.flatMap((r) => r.permissions || []))),
-      isActive: u.isActive,
-      passwordStatus: u.passwordStatus,
-      passwordResetRequested: Boolean(u.passwordResetRequested),
-      createdAt: u.createdAt,
-    }));
+    return users.map((u) => {
+      const baseProfile = {
+        id: u.id,
+        staffId: u.staffProfile?.staffId,
+        firstName: u.staffProfile?.firstName,
+        lastName: u.staffProfile?.lastName,
+        roles: u.roles.map((r) => r.code),
+        isActive: u.isActive,
+      };
+
+      if (!isAdmin) {
+        return baseProfile;
+      }
+
+      return {
+        ...baseProfile,
+        phone: u.staffProfile?.phone,
+        permissions: Array.from(new Set(u.roles.flatMap((r) => r.permissions || []))),
+        passwordStatus: u.passwordStatus,
+        passwordResetRequested: Boolean(u.passwordResetRequested),
+        createdAt: u.createdAt,
+      };
+    });
   }
 
   async findStaffById(id: string) {
