@@ -83,13 +83,18 @@ describe('StaffController', () => {
   describe('findAllStaff', () => {
     it('debería delegar el listado de personal con filtros', async () => {
       const result = await controller.findAllStaff(RoleEnum.MESERO, 'true');
-      expect(staffService.findAllStaff).toHaveBeenCalledWith(RoleEnum.MESERO, true);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(RoleEnum.MESERO, true, undefined);
       expect(result).toHaveLength(1);
     });
 
     it('debería manejar filtros indefinidos adecuadamente', async () => {
       await controller.findAllStaff(undefined, undefined);
-      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, undefined);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, undefined, undefined);
+    });
+
+    it('[#23] puede filtrar solo las solicitudes de reseteo pendientes', async () => {
+      await controller.findAllStaff(undefined, undefined, 'true');
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, undefined, true);
     });
   });
 
@@ -122,8 +127,8 @@ describe('StaffController', () => {
   describe('resetPassword', () => {
     it('debería delegar el reseteo de contraseña a staffService.resetPassword', async () => {
       const dto = {};
-      const result = await controller.resetPassword('M000001', dto);
-      expect(staffService.resetPassword).toHaveBeenCalledWith('M000001', dto);
+      const result = await controller.resetPassword('M000001', 'adm-1', dto);
+      expect(staffService.resetPassword).toHaveBeenCalledWith('M000001', dto, 'adm-1');
       expect(result).toHaveProperty('temporaryPassword');
     });
   });

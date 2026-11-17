@@ -31,3 +31,8 @@ export const SYSTEM_PERMISSIONS_CATALOG: ServicePermissionsGroup[] = CATALOG_SPE
     return { serviceKey, serviceName, iconName, permissions };
   },
 );
+
+/** Códigos válidos de permiso, para validar lo que se asigna a un rol. */
+export const SYSTEM_PERMISSION_CODES: ReadonlySet<string> = new Set(
+  SYSTEM_PERMISSIONS_CATALOG.flatMap((group) => group.permissions.map((p) => p.code)),
+);

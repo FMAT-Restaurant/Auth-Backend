@@ -3,6 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 import * as crypto from 'node:crypto';
 
+/** Oculta la contraseña de una URL amqp://usuario:clave@host para los logs. */
+export function maskCredentials(url: string): string {
+  return url.replace(/\/\/([^:/@]+):[^@]*@/, '//$1:***@');
+}
+
 export interface StaffEventPayload {
   userId: string;
   staffId: string;
@@ -30,11 +35,37 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
       this.connection = await amqp.connect(rabbitUrl);
       this.channel = await this.connection.createChannel();
       await this.channel.assertExchange(this.exchange, 'topic', { durable: true });
-      this.logger.log(`Conectado exitosamente a RabbitMQ en ${rabbitUrl}`);
+      // Si el broker se cae después, el estado se refleja en /health.
+      this.connection.on?.('close', () => {
+        this.channel = null;
+        this.connection = null;
+        this.reportFailure('Se perdió la conexión con RabbitMQ');
+      });
+      this.logger.log(`Conectado exitosamente a RabbitMQ en ${maskCredentials(rabbitUrl)}`);
     } catch (error) {
-      this.logger.warn(
-        `No se pudo conectar a RabbitMQ (${error.message}). Los eventos se omitirán localmente.`,
+      this.channel = null;
+      this.reportFailure(
+        `No se pudo conectar a RabbitMQ en ${maskCredentials(rabbitUrl)} (${error.message})`,
       );
+    }
+  }
+
+  /** true si hay un canal abierto con el broker (lo usa /health). */
+  isConnected(): boolean {
+    return this.channel !== null;
+  }
+
+  /**
+   * En producción un broker caído es un error (antes solo era una advertencia y
+   * los eventos se perdían sin que nadie lo notara, #11). En desarrollo se
+   * permite trabajar sin RabbitMQ.
+   */
+  private reportFailure(message: string): void {
+    const suffix = 'Los eventos de personal NO se están publicando.';
+    if (this.configService.get<string>('NODE_ENV') === 'production') {
+      this.logger.error(`${message}. ${suffix}`);
+    } else {
+      this.logger.warn(`${message}. ${suffix} (modo desarrollo)`);
     }
   }
 

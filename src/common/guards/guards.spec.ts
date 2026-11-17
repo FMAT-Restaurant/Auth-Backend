@@ -1,6 +1,7 @@
 import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { PasswordStatus } from '../../database/entities/user.entity';
 import { RolesGuard } from './roles.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { TemporaryPasswordGuard } from './temporary-password.guard';
@@ -78,20 +79,41 @@ describe('Guards, JwtStrategy y Utilidades', () => {
   });
 
   describe('JwtStrategy', () => {
+    const SECRET = 'test-secret-de-al-menos-32-caracteres-123';
     const configService = {
-      get: jest.fn().mockReturnValue('test-secret'),
+      get: jest.fn().mockReturnValue(SECRET),
     } as unknown as ConfigService;
-    const strategy = new JwtStrategy(configService);
+    let userRepo: { findOne: jest.Mock };
+    let strategy: JwtStrategy;
 
-    it('debería validar un payload válido y devolver el objeto de usuario', () => {
-      const result = strategy.validate({
-        sub: 'usr-1',
-        staffId: 'M000001',
-        email: 'm@fmat.com',
-        roles: ['MESERO'],
-        mustChangePassword: false,
-      });
-      expect(result).toEqual({
+    const activeUser = (overrides: Record<string, unknown> = {}) => ({
+      id: 'usr-1',
+      email: 'm@fmat.com',
+      isActive: true,
+      tokenVersion: 0,
+      passwordStatus: PasswordStatus.ACTIVE,
+      roles: [{ code: 'MESERO' }],
+      ...overrides,
+    });
+
+    const payload = (overrides: Record<string, unknown> = {}) => ({
+      sub: 'usr-1',
+      staffId: 'M000001',
+      email: 'm@fmat.com',
+      roles: ['MESERO'],
+      mustChangePassword: false,
+      tv: 0,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      userRepo = { findOne: jest.fn() };
+      strategy = new JwtStrategy(configService, userRepo as any);
+    });
+
+    it('debería validar un payload válido y devolver el objeto de usuario', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+      await expect(strategy.validate(payload())).resolves.toEqual({
         userId: 'usr-1',
         staffId: 'M000001',
         email: 'm@fmat.com',
@@ -100,16 +122,46 @@ describe('Guards, JwtStrategy y Utilidades', () => {
       });
     });
 
-    it('debería lanzar UnauthorizedException si falta sub en el payload', () => {
-      expect(() =>
-        strategy.validate({
-          sub: '',
-          staffId: 'M000001',
-          email: null,
-          roles: [],
-          mustChangePassword: true,
-        }),
-      ).toThrow(UnauthorizedException);
+    it('debería lanzar UnauthorizedException si falta sub en el payload', async () => {
+      await expect(strategy.validate(payload({ sub: '' }))).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('[SEC #15] rechaza el token si el usuario fue desactivado', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser({ isActive: false }));
+      await expect(strategy.validate(payload())).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('[SEC #15] rechaza el token si el usuario fue eliminado', async () => {
+      userRepo.findOne.mockResolvedValue(null);
+      await expect(strategy.validate(payload())).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('[SEC #15] rechaza el token si la versión de sesión cambió (roles, contraseña, logout)', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser({ tokenVersion: 3 }));
+      await expect(strategy.validate(payload({ tv: 2 }))).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('[SEC #15] toma los roles y el estado de la contraseña de la base, no del token', async () => {
+      userRepo.findOne.mockResolvedValue(
+        activeUser({ roles: [{ code: 'HOST' }], passwordStatus: PasswordStatus.TEMPORARY }),
+      );
+      const result = await strategy.validate(payload({ roles: ['MESERO', 'CHEF_MASTER'] }));
+      expect(result.roles).toEqual(['HOST']);
+      expect(result.mustChangePassword).toBe(true);
+    });
+
+    it('acepta tokens anteriores sin claim tv como versión 0', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+      const legacy: Record<string, unknown> = payload();
+      delete legacy.tv;
+      await expect(strategy.validate(legacy as any)).resolves.toHaveProperty('userId', 'usr-1');
+    });
+
+    it('[SEC #9] no se puede crear sin un JWT_SECRET válido', () => {
+      const missing = { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService;
+      expect(() => new JwtStrategy(missing, userRepo as any)).toThrow(/JWT_SECRET/);
     });
   });
 

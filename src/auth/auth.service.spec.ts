@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
+import { DataSource } from 'typeorm';
 import {
   ConflictException,
   UnauthorizedException,
@@ -9,7 +10,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
-import { AuthService } from './auth.service';
+import { AuthService, refreshTokenTtlMs } from './auth.service';
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { StaffProfile } from '../database/entities/staff-profile.entity';
@@ -24,10 +25,14 @@ describe('AuthService', () => {
   let refreshTokenRepo: any;
   let auditLogRepo: any;
   let jwtService: any;
+  let manager: any;
+  let dataSource: any;
 
   beforeEach(async () => {
     userRepo = {
       findOne: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      increment: jest.fn().mockResolvedValue({}),
       create: jest.fn((entity) => ({ id: 'usr-1', ...entity })),
       save: jest.fn((entity) => Promise.resolve({ id: 'usr-1', ...entity })),
       delete: jest.fn().mockResolvedValue({}),
@@ -64,6 +69,21 @@ describe('AuthService', () => {
       sign: jest.fn(() => 'mock-jwt-token'),
     };
 
+    // EntityManager falso para la transacción de setup-admin.
+    manager = {
+      query: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      findOne: jest.fn().mockResolvedValue({ code: RoleEnum.ADMINISTRADOR }),
+      create: jest.fn((_entity, data) => ({ ...data })),
+      save: jest.fn((entity) => {
+        if (!entity.id) entity.id = 'usr-1';
+        return Promise.resolve(entity);
+      }),
+    };
+    dataSource = {
+      transaction: jest.fn((cb) => cb(manager)),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -73,6 +93,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(RefreshToken), useValue: refreshTokenRepo },
         { provide: getRepositoryToken(AuditLog), useValue: auditLogRepo },
         { provide: JwtService, useValue: jwtService },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -80,26 +101,31 @@ describe('AuthService', () => {
   });
 
   describe('getSetupStatus', () => {
-    it('debería retornar configured: true si existe un admin', async () => {
-      userRepo.findOne.mockResolvedValueOnce({ id: 'adm-1', userType: UserType.ADMIN });
+    it('debería retornar configured: true si existe algún usuario', async () => {
+      userRepo.count.mockResolvedValueOnce(1);
       const result = await service.getSetupStatus();
       expect(result).toEqual({ configured: true });
     });
 
-    it('debería retornar configured: false si no existe un admin', async () => {
-      userRepo.findOne.mockResolvedValueOnce(null);
+    it('debería retornar configured: false si la base no tiene usuarios', async () => {
+      userRepo.count.mockResolvedValueOnce(0);
       const result = await service.getSetupStatus();
       expect(result).toEqual({ configured: false });
+    });
+
+    it('[SEC #12] sigue configurado aunque ya no exista ningún ADMIN (no reabre setup-admin)', async () => {
+      // Solo queda personal operativo: el sistema no debe volver a "sin configurar".
+      userRepo.count.mockResolvedValueOnce(3);
+      userRepo.findOne.mockResolvedValue(null);
+      const result = await service.getSetupStatus();
+      expect(result).toEqual({ configured: true });
     });
   });
 
   describe('setupAdmin', () => {
     it('debería configurar al administrador inicial exitosamente', async () => {
-      userRepo.findOne.mockResolvedValue(null);
-      roleRepo.findOne.mockResolvedValue({ code: RoleEnum.ADMINISTRADOR });
-
       const result = await service.setupAdmin({
-        email: 'admin@fmat.com',
+        email: 'Admin@FMAT.com ',
         password: 'Password123!',
         firstName: 'Ruben',
         lastName: 'Admin',
@@ -107,12 +133,17 @@ describe('AuthService', () => {
 
       expect(result).toHaveProperty('accessToken', 'mock-jwt-token');
       expect(result.user.roles).toContain(RoleEnum.ADMINISTRADOR);
-      expect(userRepo.save).toHaveBeenCalled();
-      expect(staffProfileRepo.save).toHaveBeenCalled();
+      expect(result.user.email).toBe('admin@fmat.com');
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.objectContaining({ userType: UserType.ADMIN }),
+      );
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.objectContaining({ staffId: 'ADM000001', userId: 'usr-1' }),
+      );
     });
 
-    it('debería lanzar ConflictException si el administrador ya ha sido configurado', async () => {
-      userRepo.findOne.mockResolvedValueOnce({ id: 'existing-admin', userType: UserType.ADMIN });
+    it('debería lanzar ConflictException si ya existe cualquier usuario', async () => {
+      manager.count.mockResolvedValueOnce(1);
 
       await expect(
         service.setupAdmin({
@@ -120,19 +151,60 @@ describe('AuthService', () => {
           password: 'Password123!',
         }),
       ).rejects.toThrow(ConflictException);
+      expect(manager.save).not.toHaveBeenCalled();
     });
 
-    it('debería lanzar ConflictException si el correo ya existe', async () => {
-      userRepo.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ id: 'existing-user' });
+    it('[SEC #13] toma un bloqueo y crea usuario y perfil dentro de la misma transacción', async () => {
+      await service.setupAdmin({ email: 'admin@fmat.com', password: 'Password123!' });
 
-      await expect(
-        service.setupAdmin({
-          email: 'duplicate@fmat.com',
-          password: 'Password123!',
-        }),
-      ).rejects.toThrow(ConflictException);
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(manager.query).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock($1)',
+        [expect.any(Number)],
+      );
+      // El bloqueo va antes de la comprobación y de cualquier inserción.
+      const lockOrder = manager.query.mock.invocationCallOrder[0];
+      expect(lockOrder).toBeLessThan(manager.count.mock.invocationCallOrder[0]);
+      expect(lockOrder).toBeLessThan(manager.save.mock.invocationCallOrder[0]);
+      // Nada se guarda fuera de la transacción.
+      expect(userRepo.save).not.toHaveBeenCalled();
+      expect(staffProfileRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('[SEC #13] con peticiones simultáneas solo una crea al administrador', async () => {
+      // Simula el bloqueo de Postgres: cada transacción espera a que termine la anterior.
+      let created = 0;
+      let queue = Promise.resolve();
+      dataSource.transaction.mockImplementation((cb: (m: any) => Promise<unknown>) => {
+        const run = queue.then(() =>
+          cb({
+            ...manager,
+            count: jest.fn(() => Promise.resolve(created)),
+            save: jest.fn((entity: any) => {
+              if (entity.userType === UserType.ADMIN) created += 1;
+              if (!entity.id) entity.id = `usr-${created}`;
+              return Promise.resolve(entity);
+            }),
+          }),
+        );
+        queue = run.then(
+          () => undefined,
+          () => undefined,
+        );
+        return run;
+      });
+
+      const results = await Promise.allSettled(
+        [1, 2, 3, 4, 5].map((n) =>
+          service.setupAdmin({ email: `admin${n}@fmat.com`, password: 'Password123!' }),
+        ),
+      );
+
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(created).toBe(1);
+      const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+      expect(rejected).toHaveLength(4);
+      rejected.forEach((r) => expect(r.reason).toBeInstanceOf(ConflictException));
     });
   });
 
@@ -221,7 +293,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('debería autenticar correctamente incluso si la contraseña tiene espacios al inicio o final (copy-paste)', async () => {
+    it('[SEC #16] no recorta la contraseña: con espacios extra es otra contraseña', async () => {
       const hash = await bcrypt.hash('CorrectPassword123!', 10);
       userRepo.findOne.mockResolvedValue({
         id: 'usr-1',
@@ -233,12 +305,95 @@ describe('AuthService', () => {
         staffProfile: { staffId: 'ADM000001' },
       });
 
-      const result = await service.login({
+      await expect(
+        service.login({
+          identifier: 'admin@test.com',
+          password: '  CorrectPassword123!  ',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      const ok = await service.login({
         identifier: 'admin@test.com',
-        password: '  CorrectPassword123!  ',
+        password: 'CorrectPassword123!',
+      });
+      expect(ok).toHaveProperty('accessToken', 'mock-jwt-token');
+    });
+
+    it('[SEC #16] una contraseña guardada con espacios solo coincide escrita igual', async () => {
+      const hash = await bcrypt.hash('       x', 10);
+      userRepo.findOne.mockResolvedValue({
+        id: 'usr-1',
+        email: 'm@test.com',
+        passwordHash: hash,
+        passwordStatus: PasswordStatus.ACTIVE,
+        isActive: true,
+        roles: [],
+        staffProfile: { staffId: 'M000001' },
       });
 
-      expect(result).toHaveProperty('accessToken', 'mock-jwt-token');
+      await expect(
+        service.login({ identifier: 'm@test.com', password: 'x' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('Vida del refresh token (Auth-Frontend #6)', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+
+    it('dura 7 días por defecto', () => {
+      expect(refreshTokenTtlMs({})).toBe(7 * DAY);
+    });
+
+    it('se puede configurar con REFRESH_TOKEN_TTL_DAYS', () => {
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: '1' })).toBe(DAY);
+    });
+
+    it('ignora valores inválidos o mayores a 30 días', () => {
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: 'abc' })).toBe(7 * DAY);
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: '0' })).toBe(7 * DAY);
+      expect(refreshTokenTtlMs({ REFRESH_TOKEN_TTL_DAYS: '365' })).toBe(7 * DAY);
+    });
+
+    it('el refresh token emitido en el login vence en 7 días', async () => {
+      const hash = await bcrypt.hash('CorrectPassword123!', 10);
+      userRepo.findOne.mockResolvedValue({
+        id: 'usr-1',
+        email: 'admin@test.com',
+        passwordHash: hash,
+        passwordStatus: PasswordStatus.ACTIVE,
+        isActive: true,
+        roles: [{ code: RoleEnum.ADMINISTRADOR }],
+        staffProfile: { staffId: 'ADM000001' },
+      });
+
+      const before = Date.now();
+      await service.login({ identifier: 'admin@test.com', password: 'CorrectPassword123!' });
+
+      const saved = refreshTokenRepo.save.mock.calls[0][0];
+      const ttl = saved.expiresAt.getTime() - before;
+      expect(ttl).toBeGreaterThanOrEqual(7 * DAY - 1000);
+      expect(ttl).toBeLessThanOrEqual(7 * DAY + 1000);
+    });
+  });
+
+  describe('[SEC #18] permiso "*" solo para el administrador', () => {
+    it('un rol personalizado con "*" guardado no le da acceso total a un empleado', async () => {
+      const hash = await bcrypt.hash('Clave12345', 10);
+      userRepo.findOne.mockResolvedValue(null);
+      staffProfileRepo.findOne.mockResolvedValue({
+        staffId: 'M000009',
+        user: {
+          id: 'usr-9',
+          userType: UserType.STAFF,
+          passwordHash: hash,
+          passwordStatus: PasswordStatus.ACTIVE,
+          isActive: true,
+          roles: [{ code: 'ROL_SUPER', permissions: ['*', 'orders:view'] }],
+        },
+      });
+
+      const result = await service.login({ identifier: 'M000009', password: 'Clave12345' });
+      expect(result.user.permissions).toEqual(['orders:view']);
     });
   });
 
@@ -261,6 +416,49 @@ describe('AuthService', () => {
       expect(result.mustChangePassword).toBe(false);
       expect(user.passwordStatus).toBe(PasswordStatus.ACTIVE);
       expect(userRepo.save).toHaveBeenCalled();
+    });
+
+    it('[SEC #16] guarda la nueva contraseña tal cual, sin recortar', async () => {
+      const hash = await bcrypt.hash('OldTempPass', 10);
+      const user: any = {
+        id: 'usr-1',
+        passwordHash: hash,
+        passwordStatus: PasswordStatus.TEMPORARY,
+        tokenVersion: 0,
+        staffProfile: { staffId: 'M000001' },
+      };
+      userRepo.findOne.mockResolvedValue(user);
+
+      await service.changeInitialPassword('usr-1', {
+        currentPassword: 'OldTempPass',
+        newPassword: 'Nueva Clave 2026',
+      });
+
+      expect(await bcrypt.compare('Nueva Clave 2026', user.passwordHash)).toBe(true);
+      expect(await bcrypt.compare('NuevaClave2026', user.passwordHash)).toBe(false);
+    });
+
+    it('[SEC #15] incrementa la versión de sesión para invalidar los access tokens anteriores', async () => {
+      const hash = await bcrypt.hash('OldTempPass', 10);
+      const user: any = {
+        id: 'usr-1',
+        passwordHash: hash,
+        passwordStatus: PasswordStatus.TEMPORARY,
+        tokenVersion: 4,
+        staffProfile: { staffId: 'M000001' },
+      };
+      userRepo.findOne.mockResolvedValue(user);
+
+      await service.changeInitialPassword('usr-1', {
+        currentPassword: 'OldTempPass',
+        newPassword: 'BrandNewPassword123!',
+      });
+
+      expect(user.tokenVersion).toBe(5);
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ tv: 5 }),
+        expect.anything(),
+      );
     });
 
     it('debería fallar si la contraseña actual no coincide', async () => {
@@ -348,6 +546,7 @@ describe('AuthService', () => {
         userType: UserType.ADMIN,
       };
       userRepo.findOne.mockResolvedValue(user);
+      userRepo.count.mockResolvedValueOnce(2); // hay otro administrador activo
 
       const result = await service.deleteAccount('usr-admin-1');
 
@@ -364,6 +563,15 @@ describe('AuthService', () => {
       userRepo.findOne.mockResolvedValue(staffUser);
 
       await expect(service.deleteAccount('usr-staff-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('[SEC #12] impide que el único administrador elimine su cuenta', async () => {
+      userRepo.findOne.mockResolvedValue({ id: 'usr-admin-1', userType: UserType.ADMIN });
+      userRepo.count.mockResolvedValueOnce(1);
+
+      await expect(service.deleteAccount('usr-admin-1')).rejects.toThrow(ConflictException);
+      expect(userRepo.delete).not.toHaveBeenCalled();
+      expect(staffProfileRepo.delete).not.toHaveBeenCalled();
     });
   });
 
@@ -398,6 +606,8 @@ describe('AuthService', () => {
       const result = await service.logout('usr-1');
       expect(result).toHaveProperty('message');
       expect(refreshTokenRepo.update).toHaveBeenCalled();
+      // [SEC #15] también invalida los access tokens vigentes
+      expect(userRepo.increment).toHaveBeenCalledWith({ id: 'usr-1' }, 'tokenVersion', 1);
     });
 
     it('debería retornar el perfil completo en getMe', async () => {
@@ -442,7 +652,7 @@ describe('AuthService', () => {
 
       const result = await service.requestPasswordReset({ identifier: 'M000001' });
 
-      expect(result.message).toBe('Solicitud de cambio de contraseña enviada exitosamente');
+      expect(result.message).toBe('Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.');
       expect(staffUser.passwordResetRequested).toBe(true);
       expect(userRepo.save).toHaveBeenCalledWith(staffUser);
       expect(auditLogRepo.create).toHaveBeenCalledWith(
@@ -463,7 +673,7 @@ describe('AuthService', () => {
 
       const result = await service.requestPasswordReset({ identifier: 'INEXISTENTE' });
 
-      expect(result.message).toBe('Solicitud de cambio de contraseña enviada exitosamente');
+      expect(result.message).toBe('Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.');
       expect(userRepo.save).not.toHaveBeenCalled();
     });
 
