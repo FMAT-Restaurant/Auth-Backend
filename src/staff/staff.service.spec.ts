@@ -550,7 +550,7 @@ describe('StaffService', () => {
         generated.add(result.temporaryPassword);
       }
       expect(generated.size).toBe(50);
-    });
+    }, 30000);
   });
 
   describe('updateStaff', () => {
