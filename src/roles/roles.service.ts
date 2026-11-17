@@ -46,7 +46,7 @@ export class RolesService implements OnModuleInit {
       {
         code: RoleEnum.MESERO,
         name: 'Mesero / Órdenes',
-        description: 'Captura, consulta y gestión de órdenes de comensales',
+        description: 'Captura, consulta y gestión de órdenes de comensales y operación de mesas en sala',
         permissions: [
           'orders:orders:view',
           'orders:orders:create',
@@ -56,6 +56,14 @@ export class RolesService implements OnModuleInit {
           'orders:orders:transfer',
           'orders:items:redo',
           'orders:orders:request_bill',
+          'sala:tables:view',
+          'sala:tables:occupy',
+          'sala:tables:update_status',
+          'sala:tables:assign_waiter',
+          'sala:assignments:view',
+          'sala:table_unions:view',
+          'sala:table_unions:create',
+          'sala:table_unions:release',
         ],
         isAssignable: true,
         isSystemRole: true,

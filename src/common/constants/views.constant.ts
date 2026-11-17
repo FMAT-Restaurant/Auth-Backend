@@ -14,7 +14,7 @@ export const ROLE_VIEWS_MAP: Record<RoleEnum, string[]> = {
   [RoleEnum.HOST]: ['sala-view'],
   [RoleEnum.ALMACENISTA]: ['inventory-view'],
   [RoleEnum.GESTOR_MENU]: ['menu-view'],
-  [RoleEnum.MESERO]: ['orders-pos-view'],
+  [RoleEnum.MESERO]: ['orders-pos-view', 'sala-view'],
   [RoleEnum.CHEF_MASTER]: ['kitchen-kds-view'],
   [RoleEnum.CAJERO]: ['billing-view'],
 };
