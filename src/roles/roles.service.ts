@@ -64,6 +64,7 @@ export class RolesService implements OnModuleInit {
           'sala:table_unions:view',
           'sala:table_unions:create',
           'sala:table_unions:release',
+          'menu:entries:view',
         ],
         isAssignable: true,
         isSystemRole: true,
