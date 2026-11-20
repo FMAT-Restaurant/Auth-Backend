@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class LoginDto {
   @IsString()
@@ -10,4 +10,8 @@ export class LoginDto {
   @IsNotEmpty({ message: 'La contraseña es obligatoria' })
   @MaxLength(128, { message: 'La contraseña es demasiado larga' })
   password: string;
+
+  @IsOptional()
+  @IsIn(['STAFF', 'ADMIN'], { message: 'El modo de acceso debe ser STAFF o ADMIN' })
+  loginType?: 'STAFF' | 'ADMIN';
 }

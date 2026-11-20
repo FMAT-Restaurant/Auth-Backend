@@ -109,6 +109,28 @@ describe('AuthController', () => {
       expect(authService.refresh).toHaveBeenCalledWith(dto);
       expect(result).toHaveProperty('accessToken', 'new-access-token');
     });
+
+    it('lee el refresh token de la cookie HttpOnly y omite refreshToken en JSON para peticiones con Origin', async () => {
+      const req = {
+        headers: {
+          cookie: 'fmat_refresh_token=cookie-refresh-123',
+          origin: 'http://localhost:3000',
+        },
+      } as any;
+      const res = {
+        cookie: jest.fn(),
+        clearCookie: jest.fn(),
+      } as any;
+
+      const result = await controller.refresh({}, req, res);
+      expect(authService.refresh).toHaveBeenCalledWith({ refreshToken: 'cookie-refresh-123' });
+      expect(res.cookie).toHaveBeenCalledWith(
+        'fmat_refresh_token',
+        'new-refresh-token',
+        expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/api/v1/auth' }),
+      );
+      expect(result).toEqual({ accessToken: 'new-access-token' });
+    });
   });
 
   describe('changeInitialPassword', () => {

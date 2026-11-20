@@ -64,7 +64,7 @@ export class RolesService implements OnModuleInit {
           'sala:table_unions:view',
           'sala:table_unions:create',
           'sala:table_unions:release',
-          'menu:entries:view',
+          'menu:catalog:read',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -87,18 +87,37 @@ export class RolesService implements OnModuleInit {
         isSystemRole: true,
       },
       {
+        code: RoleEnum.COCINERO,
+        name: 'Cocinero (Línea KDS)',
+        description: 'Operación en línea de cocina KDS: consulta de cola, inicio de preparación y estado de platillos',
+        permissions: [
+          'kitchen:queues:view',
+          'kitchen:orders:start_preparation',
+          'kitchen:items:ready',
+          'kitchen:orders:ready',
+          'kitchen:items:reject',
+        ],
+        isAssignable: true,
+        isSystemRole: true,
+      },
+      {
         code: RoleEnum.GESTOR_MENU,
         name: 'Gestor de Menú',
         description: 'Administración del catálogo de platillos, categorías, recetas y promociones',
         permissions: [
-          'menu:entries:view',
-          'menu:entries:manage',
-          'menu:categories:view',
-          'menu:categories:manage',
-          'menu:recipes:view',
-          'menu:recipes:manage',
-          'menu:offers:view',
-          'menu:offers:manage',
+          'menu:catalog:read',
+          'menu:catalog:print',
+          'menu:categories:read',
+          'menu:categories:write',
+          'menu:entries:read',
+          'menu:entries:write',
+          'menu:entries:status',
+          'menu:offers:read',
+          'menu:offers:write',
+          'menu:offers:status',
+          'menu:recipes:read',
+          'menu:recipes:write',
+          'menu:images:write',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -206,7 +225,7 @@ export class RolesService implements OnModuleInit {
 
     if (
       !roleCode.startsWith('ROL_') &&
-      !['HOST', 'ALMACENISTA', 'GESTOR_MENU', 'MESERO', 'CHEF_MASTER', 'CAJERO'].includes(roleCode)
+      !['HOST', 'ALMACENISTA', 'GESTOR_MENU', 'MESERO', 'CHEF_MASTER', 'COCINERO', 'CAJERO'].includes(roleCode)
     ) {
       roleCode = `ROL_${roleCode}`;
     }
