@@ -30,7 +30,7 @@ import { assertValidJwtSecret } from '../common/config/env.validation';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: assertValidJwtSecret(config.get<string>('JWT_SECRET')),
-        signOptions: { expiresIn: '1h' },
+        signOptions: { expiresIn: '15m' },
       }),
     }),
     ConfigModule,

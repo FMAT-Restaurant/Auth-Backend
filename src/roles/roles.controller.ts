@@ -12,12 +12,13 @@ import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { TemporaryPasswordGuard } from '../common/guards/temporary-password.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleEnum } from '../database/entities/role.entity';
 
 @Controller('api/v1/roles')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TemporaryPasswordGuard, RolesGuard)
 @Roles(RoleEnum.ADMINISTRADOR)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
