@@ -13,7 +13,7 @@ API REST centralizada para la autenticación, autorización basada en permisos (
 * **Seguridad:** JWT (Access Tokens y Refresh Tokens con rotación segura), bcrypt para hash de contraseñas
 * **Eventos:** RabbitMQ (publicación de eventos de dominio: `staff.created`, `staff.updated`, etc.)
 * **Contenedores:** Docker & Docker Compose (Multi-stage build)
-* **Pruebas y Calidad:** Jest (60 pruebas unitarias y de integración) y ESLint
+* **Pruebas y Calidad:** Jest (185 pruebas unitarias y de integración en 15 suites) y ESLint
 
 ---
 
@@ -61,10 +61,9 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
    # Base de datos
    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fmat_auth
 
-   # Secretos JWT
-   JWT_SECRET=super_secret_jwt_key_restaurant_auth_2026!
-   JWT_ACCESS_SECRET=secret_jwt_access_fmat_restaurant_2026
-   JWT_REFRESH_SECRET=secret_jwt_refresh_fmat_restaurant_2026
+   # Secreto JWT (obligatorio, mínimo 32 caracteres, el mismo que usa el API Gateway).
+   # Ver "Cómo obtener JWT_SECRET" más abajo. Nunca lo subas al repositorio.
+   JWT_SECRET=
 
    # RabbitMQ (opcional en desarrollo offline)
    RABBITMQ_URL=amqp://localhost:5672
@@ -91,25 +90,71 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
 ## 📡 Endpoints Principales (`/api/v1`)
 
 ### Autenticación (`/auth`)
-* `GET /auth/setup-status` — Verifica si ya existe un administrador configurado en el sistema.
-* `POST /auth/setup-admin` — Registro inicial del Gerente General (solo si no existe uno previamente).
+* `GET /auth/setup-status` — Indica si el sistema ya está configurado (si existe cualquier usuario).
+* `POST /auth/setup-admin` — Registro inicial del Gerente General (solo con la base vacía).
 * `POST /auth/login` — Inicio de sesión unificado (correo electrónico para administrador o `StaffID` para personal operativo).
 * `POST /auth/change-initial-password` — Cambio obligatorio de contraseña temporal al primer inicio de sesión.
 * `GET /auth/me` — Datos de sesión activa, roles y permisos PBAC efectivos del usuario autenticado.
 * `POST /auth/refresh` — Renovación de tokens mediante Refresh Token.
 * `PATCH /auth/profile` — Modificación de información personal del usuario autenticado.
-* `POST /auth/logout` — Cierre de sesión y revocación del refresh token.
+* `POST /auth/request-password-reset` — Solicitud al Administrador para que asigne una contraseña temporal nueva (no es un reseteo automático).
+* `DELETE /auth/account` — Eliminación protegida de la cuenta del usuario autenticado.
+* `POST /auth/logout` — Cierre de sesión: revoca el refresh token y los access tokens vigentes.
 
-### Personal Operativo (`/staff`) *(Requiere rol ADMINISTRADOR)*
-* `GET /staff` — Listado de colaboradores, identificadores (`M000001`, `C000001`, etc.), estado y contraseñas provisionales.
-* `POST /staff` — Registro de nuevo colaborador, generación automática de Staff ID y clave temporal segura.
+### Personal Operativo (`/staff`) *(Requiere rol ADMINISTRADOR, salvo lectura operativa PBAC en `GET /staff`)*
+* `GET /staff` — Listado de colaboradores, identificadores (`M000001`, `C000001`, etc.) y estado. Acepta lectura operativa por PBAC (`staff:view`, `sala:tables:view`, `sala:tables:occupy`, `sala:tables:assign_waiter`) devolviendo un perfil reducido sin datos sensibles; para `ADMINISTRADOR` incluye teléfono, permisos, estado de contraseña y soporta `?passwordResetRequested=true`.
+* `POST /staff` — Registro de nuevo colaborador, generación automática de Staff ID y clave temporal segura (se muestra solo en esta respuesta).
 * `GET /staff/:id` — Expediente detallado del colaborador por UUID o Staff ID.
 * `PATCH /staff/:id` — Actualización de nombres, apellidos, roles o estado activo/inactivo.
-* `POST /staff/:id/reset-password` — Restablecimiento seguro de contraseña provisional.
+* `PUT /staff/:id/roles` — Reemplazo de roles asignados al colaborador.
+* `PATCH /staff/:id/status` — Activación o suspensión del colaborador (revoca tokens activos al desactivar).
+* `POST /staff/:id/reset-password` — Asigna una contraseña temporal nueva (se muestra solo en esta respuesta) y registra en la auditoría qué administrador lo hizo.
 * `DELETE /staff/:id` — Eliminación protegida del colaborador (exclusiva del administrador).
 
 ### Roles y Permisos PBAC (`/roles`) *(Requiere rol ADMINISTRADOR)*
 * `GET /roles` — Listado de roles del sistema y roles personalizados con sus permisos.
-* `GET /roles/catalog` — Catálogo agrupado de permisos por microservicio (Inventario, Cocina/KDS, Pedidos/POS, etc.).
+* `GET /roles/catalog` — Catálogo agrupado de permisos por microservicio (Inventario, Cocina/KDS, Pedidos/POS, Menú, Sala, Facturación y Personal).
+* `GET /roles/:code` — Consulta detallada de un rol por código.
 * `POST /roles` — Creación de nuevos roles basados en permisos seleccionados.
 * `PATCH /roles/:code` — Modificación de nombre, descripción y permisos de roles personalizados.
+* `DELETE /roles/:code` — Eliminación de roles personalizados (protegido para roles del sistema).
+
+### Salud del Servicio
+* `GET /health` — Estado operativo del microservicio y conexión con base de datos y RabbitMQ.
+
+---
+
+## 🔐 Notas de seguridad y operación
+
+### Esquema de la base de datos
+* **Desarrollo** (`NODE_ENV` distinto de `production`): TypeORM sincroniza las tablas con las entidades automáticamente.
+* **Producción** (`NODE_ENV=production`, como en `docker-compose.yml`): no se sincroniza; al arrancar se aplican las migraciones de `src/database/migrations`.
+* Si cambias una entidad, agrega una migración nueva en esa carpeta y regístrala en `src/database/migrations/index.ts`.
+
+### Restablecimiento de contraseña
+1. El colaborador usa "¿Olvidaste tu contraseña?" (`POST /auth/request-password-reset`).
+2. Su cuenta queda marcada con `passwordResetRequested` y aparece en el panel de personal.
+3. El Administrador asigna una contraseña temporal (`POST /staff/:id/reset-password`) y se la entrega en persona.
+4. El colaborador entra con ella y está obligado a cambiarla.
+
+### Variables de seguridad
+| Variable | Uso |
+| --- | --- |
+| `JWT_SECRET` | Obligatoria, mínimo 32 caracteres, igual a la del API Gateway. Ver "Cómo obtener JWT_SECRET". |
+| `CORS_ORIGINS` | Orígenes permitidos. En producción solo valen los de esta lista. |
+| `AUTH_RATE_LIMIT` | Intentos por minuto e IP en login y recuperación de contraseña. |
+| `AUTH_IDENTIFIER_RATE_LIMIT` / `AUTH_IDENTIFIER_WINDOW_MINUTES` | Intentos por cuenta y duración del bloqueo. |
+| `TRUST_PROXY` | Proxies de confianza para `X-Forwarded-For` (por defecto, solo el proxy privado inmediato). |
+| `RABBITMQ_URL` | Broker de eventos. Sin conexión, `/health` responde `degraded`. |
+| `REFRESH_TOKEN_TTL_DAYS` | Días que dura un refresh token sin usarse (1 a 30, por defecto 7). Cada renovación emite uno nuevo y revoca el anterior. |
+
+### Cómo obtener `JWT_SECRET`
+El valor real **nunca se guarda en el repositorio** (ni en `.env.example`, ni en `docker-compose.yml`, ni en issues o PRs).
+
+- **Entorno compartido (servidor del restaurante, staging o integración con el API Gateway):** solicita el valor al responsable del repositorio de Auth (equipo Auth). Se entrega por un canal privado, nunca por el chat del equipo ni en un commit. Debe ser idéntico al del API Gateway; si no, todas las peticiones responderán 401.
+- **Desarrollo local aislado** (sin API Gateway compartido): puedes generar uno propio:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ```
+  Si después conectas tu instancia al Gateway, usa el mismo valor en ambos.
+- **Si sospechas que se filtró:** avisa al responsable del repositorio. Se genera uno nuevo y se actualiza en Auth y en el API Gateway; todas las sesiones se cierran al cambiarlo.

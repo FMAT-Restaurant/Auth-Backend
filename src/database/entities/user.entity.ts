@@ -40,14 +40,19 @@ export class User {
   @Column({ type: 'varchar', length: 20, default: PasswordStatus.ACTIVE })
   passwordStatus: PasswordStatus;
 
-  @Column({ type: 'varchar', length: 100, nullable: true })
-  temporaryPassword?: string | null;
-
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
   @Column({ type: 'boolean', default: false })
   passwordResetRequested: boolean;
+
+  /**
+   * Versión de las sesiones del usuario. Va dentro del access token (claim `tv`)
+   * y se incrementa al desactivar, cambiar roles, cambiar o restablecer la
+   * contraseña y cerrar sesión: los access tokens anteriores dejan de servir.
+   */
+  @Column({ type: 'int', default: 0 })
+  tokenVersion: number;
 
   @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;

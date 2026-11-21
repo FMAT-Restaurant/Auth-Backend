@@ -10,7 +10,10 @@ import { Repository } from 'typeorm';
 import { Role, RoleEnum } from '../database/entities/role.entity';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
-import { SYSTEM_PERMISSIONS_CATALOG } from './catalog/permissions-catalog';
+import {
+  SYSTEM_PERMISSIONS_CATALOG,
+  SYSTEM_PERMISSION_CODES,
+} from './catalog/permissions-catalog';
 
 @Injectable()
 export class RolesService implements OnModuleInit {
@@ -42,26 +45,60 @@ export class RolesService implements OnModuleInit {
       },
       {
         code: RoleEnum.MESERO,
-        name: 'Mesero / Salonero',
-        description: 'Atención a comensales, toma de pedidos y visualización de mesas',
+        name: 'Mesero / Órdenes',
+        description: 'Captura, consulta y gestión de órdenes de comensales y operación de mesas en sala',
         permissions: [
-          'orders:view',
-          'orders:create',
-          'menu:view',
+          'orders:orders:view',
+          'orders:orders:create',
+          'orders:orders:update',
+          'orders:orders:confirm',
+          'orders:orders:cancel',
+          'orders:orders:transfer',
+          'orders:items:redo',
+          'orders:orders:request_bill',
           'sala:tables:view',
+          'sala:tables:occupy',
+          'sala:tables:update_status',
+          'sala:tables:assign_waiter',
+          'sala:assignments:view',
+          'sala:table_unions:view',
+          'sala:table_unions:create',
+          'sala:table_unions:release',
+          'menu:entries:view',
         ],
         isAssignable: true,
         isSystemRole: true,
       },
       {
         code: RoleEnum.CHEF_MASTER,
-        name: 'Chef Ejecutivo / Cocina',
+        name: 'Chef / Cocina',
         description: 'Control de pantalla KDS, preparación de comandas y estado de platillos',
         permissions: [
-          'kitchen:kds:view',
-          'kitchen:order:start_preparation',
-          'kitchen:order:mark_ready',
-          'orders:view',
+          'kitchen:queues:view',
+          'kitchen:orders:start_preparation',
+          'kitchen:items:ready',
+          'kitchen:orders:ready',
+          'kitchen:items:reject',
+          'kitchen:items:cancel',
+          'kitchen:orders:void_error',
+          'orders:orders:view',
+        ],
+        isAssignable: true,
+        isSystemRole: true,
+      },
+      {
+        code: RoleEnum.GESTOR_MENU,
+        name: 'Gestor de Menú',
+        description: 'Administración del catálogo de platillos, categorías, recetas y promociones',
+        permissions: [
+          'menu:entries:view',
+          'menu:entries:manage',
+          'menu:categories:view',
+          'menu:categories:manage',
+          'menu:recipes:view',
+          'menu:recipes:manage',
+          'menu:offers:view',
+          'menu:offers:manage',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -71,10 +108,15 @@ export class RolesService implements OnModuleInit {
         name: 'Almacenista / Bodega',
         description: 'Gestión de existencias, compras, inventario e insumos',
         permissions: [
-          'inventory:view',
-          'inventory:ingredients:create',
-          'inventory:stock:update_status',
-          'inventory:ingredients:delete',
+          'inventory:items:read',
+          'inventory:items:write',
+          'inventory:batches:read',
+          'inventory:batches:write',
+          'inventory:suppliers:read',
+          'inventory:suppliers:write',
+          'inventory:recipes:read',
+          'inventory:reservations:read',
+          'inventory:movements:read',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -82,11 +124,35 @@ export class RolesService implements OnModuleInit {
       {
         code: RoleEnum.HOST,
         name: 'Host / Recepción',
-        description: 'Recepción de comensales y distribución en mesas',
+        description: 'Recepción de comensales, gestión de mesas, reservas y lista de espera',
         permissions: [
           'sala:tables:view',
-          'sala:tables:assign_diner',
+          'sala:tables:occupy',
+          'sala:tables:update_status',
           'sala:tables:assign_waiter',
+          'sala:assignments:view',
+          'sala:table_unions:view',
+          'sala:table_unions:create',
+          'sala:table_unions:release',
+          'sala:reservations:view',
+          'sala:reservations:create',
+          'sala:reservations:update',
+          'sala:reservations:cancel',
+          'sala:reservations:mark_no_show',
+          'sala:waitlist_entries:view',
+          'sala:waitlist_entries:create',
+          'sala:waitlist_entries:update_status',
+        ],
+        isAssignable: true,
+        isSystemRole: true,
+      },
+      {
+        code: RoleEnum.CAJERO,
+        name: 'Cajero / Facturación',
+        description: 'Cobro de cuentas, emisión de comprobantes y reportes de caja',
+        permissions: [
+          'billing:invoices:create',
+          'billing:reports:view',
         ],
         isAssignable: true,
         isSystemRole: true,
@@ -98,7 +164,7 @@ export class RolesService implements OnModuleInit {
       if (!existing) {
         const role = this.roleRepo.create(def);
         await this.roleRepo.save(role);
-      } else if (!existing.permissions || existing.permissions.length === 0) {
+      } else {
         existing.permissions = def.permissions;
         existing.isSystemRole = true;
         await this.roleRepo.save(existing);
@@ -138,8 +204,17 @@ export class RolesService implements OnModuleInit {
           .filter(Boolean)
           .join('_')}`;
 
-    if (!roleCode.startsWith('ROL_') && !['HOST', 'ALMACENISTA', 'MESERO', 'CHEF_MASTER'].includes(roleCode)) {
+    if (
+      !roleCode.startsWith('ROL_') &&
+      !['HOST', 'ALMACENISTA', 'GESTOR_MENU', 'MESERO', 'CHEF_MASTER', 'CAJERO'].includes(roleCode)
+    ) {
       roleCode = `ROL_${roleCode}`;
+    }
+
+    if (roleCode.length > 50) {
+      throw new BadRequestException(
+        'El código del rol generado es demasiado largo (máximo 50 caracteres); usa un nombre más corto o un código',
+      );
     }
 
     const existing = await this.roleRepo.findOne({ where: { code: roleCode } });
@@ -153,7 +228,7 @@ export class RolesService implements OnModuleInit {
       code: roleCode,
       name: dto.name.trim(),
       description: dto.description?.trim() || `Rol personalizado de ${dto.name.trim()}`,
-      permissions: dto.permissions || [],
+      permissions: this.validatePermissions(dto.permissions),
       isAssignable: true,
       isSystemRole: false,
     });
@@ -163,6 +238,12 @@ export class RolesService implements OnModuleInit {
 
   async updateRole(code: string, dto: UpdateRoleDto): Promise<Role> {
     const role = await this.findRoleByCode(code);
+
+    // El rol ADMINISTRADOR no se puede modificar: quitarle permisos dejaría al
+    // sistema sin administración (#18).
+    if (role.code === RoleEnum.ADMINISTRADOR) {
+      throw new BadRequestException('El rol ADMINISTRADOR no se puede modificar');
+    }
 
     if (dto.name !== undefined) {
       if (role.isSystemRole) {
@@ -178,10 +259,28 @@ export class RolesService implements OnModuleInit {
     }
 
     if (dto.permissions !== undefined) {
-      role.permissions = dto.permissions;
+      role.permissions = this.validatePermissions(dto.permissions);
     }
 
     return this.roleRepo.save(role);
+  }
+
+  /**
+   * Solo se aceptan permisos del catálogo. El comodín "*" (acceso total) queda
+   * reservado al rol ADMINISTRADOR y no se puede dar a un rol personalizado (#18).
+   */
+  private validatePermissions(permissions: string[] | undefined): string[] {
+    const unique = Array.from(new Set((permissions ?? []).map((p) => String(p).trim())));
+    if (unique.includes('*')) {
+      throw new BadRequestException(
+        'El permiso "*" (acceso total) solo pertenece al rol ADMINISTRADOR',
+      );
+    }
+    const unknown = unique.filter((p) => !SYSTEM_PERMISSION_CODES.has(p));
+    if (unknown.length > 0) {
+      throw new BadRequestException(`Permisos no válidos: ${unknown.join(', ')}`);
+    }
+    return unique;
   }
 
   async deleteRole(code: string): Promise<{ message: string; code: string }> {

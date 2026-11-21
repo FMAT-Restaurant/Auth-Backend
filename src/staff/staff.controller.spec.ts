@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { StaffController } from './staff.controller';
 import { StaffService } from './staff.service';
 import { RoleEnum } from '../database/entities/role.entity';
@@ -81,15 +82,57 @@ describe('StaffController', () => {
   });
 
   describe('findAllStaff', () => {
-    it('debería delegar el listado de personal con filtros', async () => {
-      const result = await controller.findAllStaff(RoleEnum.MESERO, 'true');
-      expect(staffService.findAllStaff).toHaveBeenCalledWith(RoleEnum.MESERO, true);
+    it('debería delegar el listado completo cuando consulta ADMINISTRADOR', async () => {
+      const result = await controller.findAllStaff(
+        RoleEnum.MESERO,
+        'true',
+        undefined,
+        [RoleEnum.ADMINISTRADOR],
+      );
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(
+        RoleEnum.MESERO,
+        true,
+        undefined,
+        true,
+      );
       expect(result).toHaveLength(1);
     });
 
-    it('debería manejar filtros indefinidos adecuadamente', async () => {
-      await controller.findAllStaff(undefined, undefined);
-      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, undefined);
+    it('debería manejar filtros indefinidos adecuadamente para ADMINISTRADOR', async () => {
+      await controller.findAllStaff(undefined, undefined, undefined, [RoleEnum.ADMINISTRADOR]);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(
+        undefined,
+        undefined,
+        undefined,
+        true,
+      );
+    });
+
+    it('[#23] puede filtrar solo las solicitudes de reseteo pendientes cuando es ADMINISTRADOR', async () => {
+      await controller.findAllStaff(undefined, undefined, 'true', [RoleEnum.ADMINISTRADOR]);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, undefined, true, true);
+    });
+
+    it('debería omitir passwordResetRequested y pasar isAdmin=false para roles operativos (HOST / ROL_CAPITAN)', async () => {
+      await controller.findAllStaff(RoleEnum.MESERO, 'true', 'true', [RoleEnum.HOST]);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(
+        RoleEnum.MESERO,
+        true,
+        undefined,
+        false,
+      );
+    });
+
+    // #36 (ERS-GAP-07): el query booleano isActive debe validarse.
+    it('[#36] interpreta isActive="false" como booleano false', async () => {
+      await controller.findAllStaff(undefined, 'false', undefined, [RoleEnum.ADMINISTRADOR]);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, false, undefined, true);
+    });
+
+    it('[#36] rechaza un isActive que no sea true/false con 400', async () => {
+      await expect(
+        controller.findAllStaff(undefined, 'sí', undefined, [RoleEnum.ADMINISTRADOR]),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -122,8 +165,8 @@ describe('StaffController', () => {
   describe('resetPassword', () => {
     it('debería delegar el reseteo de contraseña a staffService.resetPassword', async () => {
       const dto = {};
-      const result = await controller.resetPassword('M000001', dto);
-      expect(staffService.resetPassword).toHaveBeenCalledWith('M000001', dto);
+      const result = await controller.resetPassword('M000001', 'adm-1', dto);
+      expect(staffService.resetPassword).toHaveBeenCalledWith('M000001', dto, 'adm-1');
       expect(result).toHaveProperty('temporaryPassword');
     });
   });

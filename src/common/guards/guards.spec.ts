@@ -1,6 +1,9 @@
 import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { PasswordStatus } from '../../database/entities/user.entity';
+import { ROLES_KEY } from '../decorators/roles.decorator';
+import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { RolesGuard } from './roles.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { TemporaryPasswordGuard } from './temporary-password.guard';
@@ -19,38 +22,79 @@ describe('Guards, JwtStrategy y Utilidades', () => {
     }) as unknown as ExecutionContext;
 
   describe('RolesGuard', () => {
-    it('debería permitir acceso cuando no hay roles requeridos', () => {
-      const reflector = { getAllAndOverride: jest.fn().mockReturnValue(undefined) } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+    const mockReflector = (roles?: RoleEnum[], permissions?: string[]) =>
+      ({
+        getAllAndOverride: jest.fn((key: string) => {
+          if (key === ROLES_KEY) return roles;
+          if (key === PERMISSIONS_KEY) return permissions;
+          return undefined;
+        }),
+      }) as unknown as Reflector;
+
+    it('debería permitir acceso cuando no hay roles ni permisos requeridos', () => {
+      const guard = new RolesGuard(mockReflector());
       expect(guard.canActivate(createMockContext())).toBe(true);
     });
 
     it('debería lanzar ForbiddenException si el usuario no tiene roles', () => {
-      const reflector = {
-        getAllAndOverride: jest.fn().mockReturnValue([RoleEnum.ADMINISTRADOR]),
-      } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
       expect(() => guard.canActivate(createMockContext(undefined))).toThrow(ForbiddenException);
     });
 
     it('debería lanzar ForbiddenException si el usuario no cuenta con el rol requerido', () => {
-      const reflector = {
-        getAllAndOverride: jest.fn().mockReturnValue([RoleEnum.ADMINISTRADOR]),
-      } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
       expect(() =>
         guard.canActivate(createMockContext({ roles: [RoleEnum.MESERO] })),
       ).toThrow(ForbiddenException);
     });
 
     it('debería permitir acceso cuando el usuario tiene el rol requerido', () => {
-      const reflector = {
-        getAllAndOverride: jest.fn().mockReturnValue([RoleEnum.ADMINISTRADOR]),
-      } as unknown as Reflector;
-      const guard = new RolesGuard(reflector);
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
       expect(
         guard.canActivate(createMockContext({ roles: [RoleEnum.ADMINISTRADOR] })),
       ).toBe(true);
+    });
+
+    it('debería permitir acceso por @RequirePermissions a roles personalizados con permiso válido', () => {
+      const guard = new RolesGuard(
+        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:assign_waiter']),
+      );
+      expect(
+        guard.canActivate(
+          createMockContext({
+            roles: ['ROL_CAPITAN'],
+            permissions: ['sala:tables:assign_waiter'],
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it('debería permitir acceso por @RequirePermissions a ADMINISTRADOR o comodín *', () => {
+      const guard = new RolesGuard(
+        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']),
+      );
+      expect(
+        guard.canActivate(
+          createMockContext({ roles: [RoleEnum.ADMINISTRADOR], permissions: [] }),
+        ),
+      ).toBe(true);
+      expect(
+        guard.canActivate(createMockContext({ roles: ['ROL_CUSTOM'], permissions: ['*'] })),
+      ).toBe(true);
+    });
+
+    it('debería denegar acceso por @RequirePermissions si no tiene ninguno de los permisos requeridos', () => {
+      const guard = new RolesGuard(
+        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']),
+      );
+      expect(() =>
+        guard.canActivate(
+          createMockContext({
+            roles: [RoleEnum.ALMACENISTA],
+            permissions: ['inventory:items:read'],
+          }),
+        ),
+      ).toThrow(ForbiddenException);
     });
   });
 
@@ -78,38 +122,109 @@ describe('Guards, JwtStrategy y Utilidades', () => {
   });
 
   describe('JwtStrategy', () => {
+    const SECRET = 'test-secret-de-al-menos-32-caracteres-123';
     const configService = {
-      get: jest.fn().mockReturnValue('test-secret'),
+      get: jest.fn().mockReturnValue(SECRET),
     } as unknown as ConfigService;
-    const strategy = new JwtStrategy(configService);
+    let userRepo: { findOne: jest.Mock };
+    let strategy: JwtStrategy;
 
-    it('debería validar un payload válido y devolver el objeto de usuario', () => {
-      const result = strategy.validate({
-        sub: 'usr-1',
-        staffId: 'M000001',
-        email: 'm@fmat.com',
-        roles: ['MESERO'],
-        mustChangePassword: false,
-      });
-      expect(result).toEqual({
+    const activeUser = (overrides: Record<string, unknown> = {}) => ({
+      id: 'usr-1',
+      email: 'm@fmat.com',
+      isActive: true,
+      tokenVersion: 0,
+      passwordStatus: PasswordStatus.ACTIVE,
+      roles: [{ code: 'MESERO' }],
+      ...overrides,
+    });
+
+    const payload = (overrides: Record<string, unknown> = {}) => ({
+      sub: 'usr-1',
+      staffId: 'M000001',
+      email: 'm@fmat.com',
+      roles: ['MESERO'],
+      mustChangePassword: false,
+      tv: 0,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      userRepo = { findOne: jest.fn() };
+      strategy = new JwtStrategy(configService, userRepo as any);
+    });
+
+    it('debería validar un payload válido y devolver el objeto de usuario', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+      await expect(strategy.validate(payload())).resolves.toEqual({
         userId: 'usr-1',
         staffId: 'M000001',
         email: 'm@fmat.com',
         roles: ['MESERO'],
+        permissions: [],
         mustChangePassword: false,
       });
     });
 
-    it('debería lanzar UnauthorizedException si falta sub en el payload', () => {
-      expect(() =>
-        strategy.validate({
-          sub: '',
-          staffId: 'M000001',
-          email: null,
-          roles: [],
-          mustChangePassword: true,
+    it('debería incluir y deduplicar los permisos efectivos de los roles del usuario', async () => {
+      userRepo.findOne.mockResolvedValue(
+        activeUser({
+          roles: [
+            { code: 'ROL_CAPITAN', permissions: ['sala:tables:view', 'sala:tables:assign_waiter'] },
+            { code: 'MESERO', permissions: ['sala:tables:view', 'orders:orders:view'] },
+          ],
         }),
-      ).toThrow(UnauthorizedException);
+      );
+      await expect(strategy.validate(payload())).resolves.toEqual({
+        userId: 'usr-1',
+        staffId: 'M000001',
+        email: 'm@fmat.com',
+        roles: ['ROL_CAPITAN', 'MESERO'],
+        permissions: ['sala:tables:view', 'sala:tables:assign_waiter', 'orders:orders:view'],
+        mustChangePassword: false,
+      });
+    });
+
+    it('debería lanzar UnauthorizedException si falta sub en el payload', async () => {
+      await expect(strategy.validate(payload({ sub: '' }))).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('[SEC #15] rechaza el token si el usuario fue desactivado', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser({ isActive: false }));
+      await expect(strategy.validate(payload())).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('[SEC #15] rechaza el token si el usuario fue eliminado', async () => {
+      userRepo.findOne.mockResolvedValue(null);
+      await expect(strategy.validate(payload())).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('[SEC #15] rechaza el token si la versión de sesión cambió (roles, contraseña, logout)', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser({ tokenVersion: 3 }));
+      await expect(strategy.validate(payload({ tv: 2 }))).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('[SEC #15] toma los roles y el estado de la contraseña de la base, no del token', async () => {
+      userRepo.findOne.mockResolvedValue(
+        activeUser({ roles: [{ code: 'HOST' }], passwordStatus: PasswordStatus.TEMPORARY }),
+      );
+      const result = await strategy.validate(payload({ roles: ['MESERO', 'CHEF_MASTER'] }));
+      expect(result.roles).toEqual(['HOST']);
+      expect(result.mustChangePassword).toBe(true);
+    });
+
+    it('acepta tokens anteriores sin claim tv como versión 0', async () => {
+      userRepo.findOne.mockResolvedValue(activeUser());
+      const legacy: Record<string, unknown> = payload();
+      delete legacy.tv;
+      await expect(strategy.validate(legacy as any)).resolves.toHaveProperty('userId', 'usr-1');
+    });
+
+    it('[SEC #9] no se puede crear sin un JWT_SECRET válido', () => {
+      const missing = { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService;
+      expect(() => new JwtStrategy(missing, userRepo as any)).toThrow(/JWT_SECRET/);
     });
   });
 

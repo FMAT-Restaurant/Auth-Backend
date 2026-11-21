@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common';
+import { EventsService } from './events/events.service';
+
+export interface HealthStatus {
+  status: 'healthy' | 'degraded';
+  timestamp: string;
+  dependencies: { rabbitmq: 'connected' | 'disconnected' };
+}
 
 @Injectable()
 export class AppService {
+  constructor(private readonly eventsService: EventsService) {}
+
   getHello(): { status: string; service: string; version: string } {
     return {
       status: 'UP',
@@ -10,10 +19,16 @@ export class AppService {
     };
   }
 
-  getHealth(): { status: string; timestamp: string } {
+  /**
+   * El servicio sigue respondiendo sin RabbitMQ, pero se reporta como
+   * "degraded" para que se note que los eventos no se están publicando (#11).
+   */
+  getHealth(): HealthStatus {
+    const rabbitmq = this.eventsService.isConnected() ? 'connected' : 'disconnected';
     return {
-      status: 'healthy',
+      status: rabbitmq === 'connected' ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
+      dependencies: { rabbitmq },
     };
   }
 }
