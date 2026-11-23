@@ -17,7 +17,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\""
   },
   "dependencies": {
     "@neon/config": "^1.8.3",
@@ -85,7 +86,9 @@
       "!**/*.module.(t|j)s",
       "!**/*.dto.(t|j)s",
       "!**/*.entity.(t|j)s",
-      "!**/index.(t|j)s"
+      "!**/index.(t|j)s",
+      "!database/migrations/**",
+      "!common/decorators/**"
     ],
     "coverageDirectory": "../coverage",
     "coverageReporters": [
