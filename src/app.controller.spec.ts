@@ -5,10 +5,10 @@ import { EventsService } from './events/events.service';
 
 describe('AppController', () => {
   let appController: AppController;
-  let eventsService: { isConnected: jest.Mock };
+  let eventsService: { getStatus: jest.Mock };
 
   beforeEach(async () => {
-    eventsService = { isConnected: jest.fn().mockReturnValue(true) };
+    eventsService = { getStatus: jest.fn().mockReturnValue('connected') };
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
       providers: [AppService, { provide: EventsService, useValue: eventsService }],
@@ -33,10 +33,17 @@ describe('AppController', () => {
     });
 
     it('[SEC #11] reporta "degraded" si RabbitMQ no está conectado', () => {
-      eventsService.isConnected.mockReturnValue(false);
+      eventsService.getStatus.mockReturnValue('disconnected');
       const response = appController.getHealth();
       expect(response.status).toBe('degraded');
       expect(response.dependencies.rabbitmq).toBe('disconnected');
+    });
+
+    it('reporta "healthy" si RabbitMQ está deshabilitado (sin RABBITMQ_URL)', () => {
+      eventsService.getStatus.mockReturnValue('disabled');
+      const response = appController.getHealth();
+      expect(response.status).toBe('healthy');
+      expect(response.dependencies.rabbitmq).toBe('disabled');
     });
   });
 });
