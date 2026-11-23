@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { EventsService } from './events/events.service';
+import { BrokerStatus, EventsService } from './events/events.service';
 
 export interface HealthStatus {
   status: 'healthy' | 'degraded';
   timestamp: string;
-  dependencies: { rabbitmq: 'connected' | 'disconnected' };
+  dependencies: { rabbitmq: BrokerStatus };
 }
 
 @Injectable()
@@ -20,13 +20,14 @@ export class AppService {
   }
 
   /**
-   * El servicio sigue respondiendo sin RabbitMQ, pero se reporta como
-   * "degraded" para que se note que los eventos no se están publicando (#11).
+   * RabbitMQ es opcional. Si está configurado pero no conecta, el servicio sigue
+   * respondiendo y se reporta "degraded" para que se note que los eventos no se
+   * publican (#11). Si no está configurado ("disabled"), no afecta el estado.
    */
   getHealth(): HealthStatus {
-    const rabbitmq = this.eventsService.isConnected() ? 'connected' : 'disconnected';
+    const rabbitmq = this.eventsService.getStatus();
     return {
-      status: rabbitmq === 'connected' ? 'healthy' : 'degraded',
+      status: rabbitmq === 'disconnected' ? 'degraded' : 'healthy',
       timestamp: new Date().toISOString(),
       dependencies: { rabbitmq },
     };

@@ -47,6 +47,36 @@ describe('EventsService', () => {
     service = new EventsService(configService);
   });
 
+  describe('RabbitMQ opcional (RABBITMQ_URL vacía o sin definir)', () => {
+    it.each([undefined, '', '   '])(
+      'con RABBITMQ_URL=%p no intenta conectar, no registra error y reporta "disabled"',
+      async (url) => {
+        const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+        const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        const disabledConfig = {
+          get: jest.fn((key: string) => (key === 'NODE_ENV' ? 'production' : url)),
+        } as unknown as ConfigService;
+        const disabled = new EventsService(disabledConfig);
+
+        await disabled.onModuleInit();
+        await disabled.publishStaffCreated(samplePayload);
+
+        expect(amqp.connect).not.toHaveBeenCalled();
+        expect(disabled.getStatus()).toBe('disabled');
+        expect(disabled.isConnected()).toBe(false);
+        expect(errorSpy).not.toHaveBeenCalled();
+        expect(warnSpy).not.toHaveBeenCalled();
+        await expect(disabled.onModuleDestroy()).resolves.toBeUndefined();
+        errorSpy.mockRestore();
+        warnSpy.mockRestore();
+      },
+    );
+
+    it('antes de inicializar se reporta "disabled"', () => {
+      expect(service.getStatus()).toBe('disabled');
+    });
+  });
+
   it('debería conectarse a RabbitMQ en onModuleInit y publicar todos los tipos de eventos', async () => {
     (amqp.connect as jest.Mock).mockResolvedValueOnce(mockConnection);
 
@@ -134,6 +164,17 @@ describe('EventsService', () => {
       expect(warnSpy).not.toHaveBeenCalled();
       errorSpy.mockRestore();
       warnSpy.mockRestore();
+    });
+
+    it('getStatus distingue connected y disconnected cuando está configurado', async () => {
+      (amqp.connect as jest.Mock).mockRejectedValueOnce(new Error('Broker offline'));
+      await service.onModuleInit();
+      expect(service.getStatus()).toBe('disconnected');
+
+      const ok = new EventsService(configService);
+      (amqp.connect as jest.Mock).mockResolvedValueOnce(mockConnection);
+      await ok.onModuleInit();
+      expect(ok.getStatus()).toBe('connected');
     });
 
     it('oculta la contraseña de la URL en los logs', () => {
