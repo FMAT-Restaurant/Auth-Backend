@@ -1,4 +1,4 @@
-import { ArgumentsHost } from '@nestjs/common';
+import { ArgumentsHost, Logger } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { DatabaseExceptionFilter } from './database-exception.filter';
 
@@ -40,5 +40,25 @@ describe('[SEC #19] DatabaseExceptionFilter', () => {
     const { status, body } = run('XX000');
     expect(status).toHaveBeenCalledWith(500);
     expect(body.message).toBe('Error interno del servidor');
+  });
+});
+
+describe('DatabaseExceptionFilter: errores sin código conocido', () => {
+  it('sin driverError responde 500 genérico y lo registra', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const host = {
+      switchToHttp: () => ({ getResponse: () => ({ status }) }),
+    } as unknown as ArgumentsHost;
+    const error = new QueryFailedError('SELECT 1', [], new Error('fallo'));
+    Object.assign(error, { driverError: undefined });
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+    new DatabaseExceptionFilter().catch(error, host);
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({ statusCode: 500, message: 'Error interno del servidor' });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('sin código'), expect.anything());
+    errorSpy.mockRestore();
   });
 });

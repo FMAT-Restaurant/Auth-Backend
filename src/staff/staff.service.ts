@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, SelectQueryBuilder } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -49,9 +45,7 @@ export class StaffService {
     const staffId = await this.generateUniqueStaffId(prefix);
 
     // 4. Contraseña temporal aleatoria segura
-    const tempPassword =
-      dto.initialPassword ||
-      this.generateRandomTempPassword();
+    const tempPassword = dto.initialPassword || this.generateRandomTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, BCRYPT_COST);
 
     // 5. Crear Usuario y Perfil
@@ -407,9 +401,7 @@ export class StaffService {
       throw new NotFoundException('Miembro del personal no encontrado');
     }
 
-    const tempPassword =
-      dto?.temporaryPassword ||
-      this.generateRandomTempPassword();
+    const tempPassword = dto?.temporaryPassword || this.generateRandomTempPassword();
     const hadPendingRequest = Boolean(user.passwordResetRequested);
     user.passwordHash = await bcrypt.hash(tempPassword, BCRYPT_COST);
     user.passwordStatus = PasswordStatus.TEMPORARY;
@@ -419,10 +411,7 @@ export class StaffService {
     await this.userRepo.save(user);
 
     // Revocar sesiones activas
-    await this.refreshTokenRepo.update(
-      { userId: user.id, isRevoked: false },
-      { isRevoked: true },
-    );
+    await this.refreshTokenRepo.update({ userId: user.id, isRevoked: false }, { isRevoked: true });
 
     // Queda registrado qué administrador atendió el reseteo (#23).
     await this.logAudit(adminId ?? null, 'PASSWORD_RESET_BY_ADMIN', {
@@ -454,9 +443,7 @@ export class StaffService {
     }
 
     if (normalized.includes(RoleEnum.ADMINISTRADOR)) {
-      throw new BadRequestException(
-        'El rol ADMINISTRADOR no es asignable al personal operativo',
-      );
+      throw new BadRequestException('El rol ADMINISTRADOR no es asignable al personal operativo');
     }
 
     const found = await this.roleRepo.find({ where: { code: In(normalized) } });
@@ -503,10 +490,7 @@ export class StaffService {
     id: string,
   ): SelectQueryBuilder<User> {
     const cleanId = id.trim();
-    const isUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        cleanId,
-      );
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
     if (isUuid) {
       return qb.andWhere('user.id = :id', { id: cleanId });
     } else {

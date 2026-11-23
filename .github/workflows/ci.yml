@@ -45,6 +45,9 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Check formatting (Prettier)
+        run: npm run format:check
+
       - name: Check linting
         run: npm run lint
 
@@ -53,6 +56,9 @@ jobs:
 
       - name: Run unit tests with coverage
         run: npm run test:cov
+
+      - name: Run e2e tests
+        run: npm run test:e2e
 
       - name: Upload test and coverage artifacts
         if: always()

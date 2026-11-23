@@ -20,18 +20,14 @@ export function assertValidJwtSecret(secret: unknown): string {
   if (typeof secret !== 'string' || secret.trim() === '') {
     throw new Error(
       'Falta la variable JWT_SECRET. Genera una con: ' +
-        'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+        "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
     );
   }
   if (secret.length < JWT_SECRET_MIN_LENGTH) {
-    throw new Error(
-      `JWT_SECRET debe tener al menos ${JWT_SECRET_MIN_LENGTH} caracteres.`,
-    );
+    throw new Error(`JWT_SECRET debe tener al menos ${JWT_SECRET_MIN_LENGTH} caracteres.`);
   }
   if (KNOWN_PUBLIC_SECRETS.has(secret)) {
-    throw new Error(
-      'JWT_SECRET usa un valor de ejemplo que es público. Genera uno nuevo.',
-    );
+    throw new Error('JWT_SECRET usa un valor de ejemplo que es público. Genera uno nuevo.');
   }
   return secret;
 }

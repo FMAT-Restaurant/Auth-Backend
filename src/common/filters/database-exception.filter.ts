@@ -1,17 +1,14 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { QueryFailedError } from 'typeorm';
 
 /** Códigos de error de PostgreSQL que se pueden explicar al cliente. */
 const PG_ERRORS: Record<string, { status: number; message: string }> = {
   '22001': { status: HttpStatus.BAD_REQUEST, message: 'Uno de los valores es demasiado largo' },
-  '22P02': { status: HttpStatus.BAD_REQUEST, message: 'Uno de los valores tiene un formato inválido' },
+  '22P02': {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Uno de los valores tiene un formato inválido',
+  },
   '23502': { status: HttpStatus.BAD_REQUEST, message: 'Falta un dato obligatorio' },
   '23503': { status: HttpStatus.CONFLICT, message: 'El registro está relacionado con otros datos' },
   '23505': { status: HttpStatus.CONFLICT, message: 'El registro ya existe' },
@@ -32,7 +29,10 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
     const known = PG_ERRORS[code];
 
     if (!known) {
-      this.logger.error(`Error de base de datos no controlado (${code || 'sin código'})`, exception.stack);
+      this.logger.error(
+        `Error de base de datos no controlado (${code || 'sin código'})`,
+        exception.stack,
+      );
     }
 
     const status = known?.status ?? HttpStatus.INTERNAL_SERVER_ERROR;

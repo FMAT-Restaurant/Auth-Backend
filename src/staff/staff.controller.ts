@@ -59,8 +59,7 @@ export class StaffController {
         `El parámetro booleano debe ser 'true' o 'false', se recibió '${value}'`,
       );
     };
-    const isAdmin =
-      Array.isArray(callerRoles) && callerRoles.includes(RoleEnum.ADMINISTRADOR);
+    const isAdmin = Array.isArray(callerRoles) && callerRoles.includes(RoleEnum.ADMINISTRADOR);
     return this.staffService.findAllStaff(
       role,
       toBool(isActive),
@@ -75,26 +74,17 @@ export class StaffController {
   }
 
   @Put(':id/roles')
-  async updateRoles(
-    @Param('id') id: string,
-    @Body() dto: UpdateStaffRolesDto,
-  ) {
+  async updateRoles(@Param('id') id: string, @Body() dto: UpdateStaffRolesDto) {
     return this.staffService.updateRoles(id, dto);
   }
 
   @Patch(':id/status')
-  async updateStatus(
-    @Param('id') id: string,
-    @Body() dto: UpdateStaffStatusDto,
-  ) {
+  async updateStatus(@Param('id') id: string, @Body() dto: UpdateStaffStatusDto) {
     return this.staffService.updateStatus(id, dto);
   }
 
   @Patch(':id')
-  async updateStaff(
-    @Param('id') id: string,
-    @Body() dto: UpdateStaffDto,
-  ) {
+  async updateStaff(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
     return this.staffService.updateStaff(id, dto);
   }
 

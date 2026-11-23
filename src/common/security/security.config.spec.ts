@@ -82,7 +82,9 @@ describe('[SEC] Configuración de seguridad HTTP', () => {
       const res = await request(app.getHttpServer()).get('/ping');
       expect(res.headers['x-content-type-options']).toBe('nosniff');
       expect(res.headers['x-frame-options']).toBe('DENY');
-      expect(res.headers['content-security-policy']).toBe("default-src 'none';frame-ancestors 'none'");
+      expect(res.headers['content-security-policy']).toBe(
+        "default-src 'none';frame-ancestors 'none'",
+      );
       expect(res.headers['strict-transport-security']).toBeDefined();
       expect(res.headers['cache-control']).toBe('no-store');
     });

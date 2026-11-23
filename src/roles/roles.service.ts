@@ -12,10 +12,7 @@ import { AuditLog } from '../database/entities/audit-log.entity';
 import { getAuditRequestMetadata } from '../common/audit/request-context';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
-import {
-  SYSTEM_PERMISSIONS_CATALOG,
-  SYSTEM_PERMISSION_CODES,
-} from './catalog/permissions-catalog';
+import { SYSTEM_PERMISSIONS_CATALOG, SYSTEM_PERMISSION_CODES } from './catalog/permissions-catalog';
 
 @Injectable()
 export class RolesService implements OnModuleInit {
@@ -68,7 +65,8 @@ export class RolesService implements OnModuleInit {
       {
         code: RoleEnum.MESERO,
         name: 'Mesero / Órdenes',
-        description: 'Captura, consulta y gestión de órdenes de comensales y operación de mesas en sala',
+        description:
+          'Captura, consulta y gestión de órdenes de comensales y operación de mesas en sala',
         permissions: [
           'orders:orders:view',
           'orders:orders:create',
@@ -111,7 +109,8 @@ export class RolesService implements OnModuleInit {
       {
         code: RoleEnum.COCINERO,
         name: 'Cocinero (Línea KDS)',
-        description: 'Operación en línea de cocina KDS: consulta de cola, inicio de preparación y estado de platillos',
+        description:
+          'Operación en línea de cocina KDS: consulta de cola, inicio de preparación y estado de platillos',
         permissions: [
           'kitchen:queues:view',
           'kitchen:orders:start_preparation',
@@ -191,10 +190,7 @@ export class RolesService implements OnModuleInit {
         code: RoleEnum.CAJERO,
         name: 'Cajero / Facturación',
         description: 'Cobro de cuentas, emisión de comprobantes y reportes de caja',
-        permissions: [
-          'billing:invoices:create',
-          'billing:reports:view',
-        ],
+        permissions: ['billing:invoices:create', 'billing:reports:view'],
         isAssignable: true,
         isSystemRole: true,
       },
@@ -247,7 +243,15 @@ export class RolesService implements OnModuleInit {
 
     if (
       !roleCode.startsWith('ROL_') &&
-      !['HOST', 'ALMACENISTA', 'GESTOR_MENU', 'MESERO', 'CHEF_MASTER', 'COCINERO', 'CAJERO'].includes(roleCode)
+      ![
+        'HOST',
+        'ALMACENISTA',
+        'GESTOR_MENU',
+        'MESERO',
+        'CHEF_MASTER',
+        'COCINERO',
+        'CAJERO',
+      ].includes(roleCode)
     ) {
       roleCode = `ROL_${roleCode}`;
     }
@@ -290,9 +294,7 @@ export class RolesService implements OnModuleInit {
 
     if (dto.name !== undefined) {
       if (role.isSystemRole) {
-        throw new BadRequestException(
-          'No se puede renombrar un rol protegido del sistema',
-        );
+        throw new BadRequestException('No se puede renombrar un rol protegido del sistema');
       }
       role.name = dto.name.trim();
     }

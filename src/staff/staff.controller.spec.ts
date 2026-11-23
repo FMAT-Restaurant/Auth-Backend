@@ -83,12 +83,9 @@ describe('StaffController', () => {
 
   describe('findAllStaff', () => {
     it('debería delegar el listado completo cuando consulta ADMINISTRADOR', async () => {
-      const result = await controller.findAllStaff(
-        RoleEnum.MESERO,
-        'true',
-        undefined,
-        [RoleEnum.ADMINISTRADOR],
-      );
+      const result = await controller.findAllStaff(RoleEnum.MESERO, 'true', undefined, [
+        RoleEnum.ADMINISTRADOR,
+      ]);
       expect(staffService.findAllStaff).toHaveBeenCalledWith(
         RoleEnum.MESERO,
         true,
@@ -100,12 +97,7 @@ describe('StaffController', () => {
 
     it('debería manejar filtros indefinidos adecuadamente para ADMINISTRADOR', async () => {
       await controller.findAllStaff(undefined, undefined, undefined, [RoleEnum.ADMINISTRADOR]);
-      expect(staffService.findAllStaff).toHaveBeenCalledWith(
-        undefined,
-        undefined,
-        undefined,
-        true,
-      );
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, undefined, undefined, true);
     });
 
     it('[#23] puede filtrar solo las solicitudes de reseteo pendientes cuando es ADMINISTRADOR', async () => {

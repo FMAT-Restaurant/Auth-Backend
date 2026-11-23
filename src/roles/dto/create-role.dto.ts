@@ -24,7 +24,8 @@ export class CreateRoleDto {
   @IsOptional()
   @MaxLength(46, { message: 'El código del rol no puede exceder 46 caracteres' })
   @Matches(/^[A-Z0-9_]+$/, {
-    message: 'El código del rol solo puede contener letras mayúsculas, números y guiones bajos (ej. ROL_BARISTA)',
+    message:
+      'El código del rol solo puede contener letras mayúsculas, números y guiones bajos (ej. ROL_BARISTA)',
   })
   code?: string;
 

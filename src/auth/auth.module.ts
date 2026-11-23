@@ -17,13 +17,7 @@ import { assertValidJwtSecret } from '../common/config/env.validation';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      User,
-      Role,
-      StaffProfile,
-      RefreshToken,
-      AuditLog,
-    ]),
+    TypeOrmModule.forFeature([User, Role, StaffProfile, RefreshToken, AuditLog]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

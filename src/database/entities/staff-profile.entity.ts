@@ -1,11 +1,4 @@
-import {
-  Entity,
-  Column,
-  PrimaryColumn,
-  OneToOne,
-  JoinColumn,
-  CreateDateColumn,
-} from 'typeorm';
+import { Entity, Column, PrimaryColumn, OneToOne, JoinColumn, CreateDateColumn } from 'typeorm';
 import { User } from './user.entity';
 
 @Entity('staff_profiles')
