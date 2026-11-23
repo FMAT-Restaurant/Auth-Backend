@@ -11,9 +11,9 @@ API REST centralizada para la autenticación, autorización basada en permisos (
 * **ORM:** TypeORM
 * **Base de Datos:** PostgreSQL (compatible con PostgreSQL local o Neon en la nube)
 * **Seguridad:** JWT (Access Tokens y Refresh Tokens con rotación segura), bcrypt para hash de contraseñas
-* **Eventos:** RabbitMQ (publicación de eventos de dominio: `staff.created`, `staff.updated`, etc.)
+* **Eventos (opcional):** RabbitMQ para publicar eventos de personal (`staff.created`, `staff.roles.updated`, `staff.status.changed`, `staff.deleted`). Hoy ningún microservicio los consume; se desactiva dejando `RABBITMQ_URL` vacía.
 * **Contenedores:** Docker & Docker Compose (Multi-stage build)
-* **Pruebas y Calidad:** Jest (185 pruebas unitarias y de integración en 15 suites) y ESLint
+* **Pruebas y Calidad:** Jest (196 pruebas unitarias y de integración en 15 suites) y ESLint
 
 ---
 
@@ -65,8 +65,8 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
    # Ver "Cómo obtener JWT_SECRET" más abajo. Nunca lo subas al repositorio.
    JWT_SECRET=
 
-   # RabbitMQ (opcional en desarrollo offline)
-   RABBITMQ_URL=amqp://localhost:5672
+   # RabbitMQ (opcional; vacía = deshabilitado)
+   # RABBITMQ_URL=amqp://localhost:5672
    ```
 
 3. **Iniciar en modo desarrollo:**
@@ -120,7 +120,7 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
 * `DELETE /roles/:code` — Eliminación de roles personalizados (protegido para roles del sistema).
 
 ### Salud del Servicio
-* `GET /health` — Estado operativo del microservicio y conexión con base de datos y RabbitMQ.
+* `GET /health` — Estado operativo del microservicio. `dependencies.rabbitmq` vale `connected`, `disconnected` (configurado pero caído: `status` = `degraded`) o `disabled` (sin `RABBITMQ_URL`: `status` = `healthy`).
 
 ---
 
@@ -145,7 +145,7 @@ Esto levantará automáticamente el microservicio y su base de datos PostgreSQL 
 | `AUTH_RATE_LIMIT` | Intentos por minuto e IP en login y recuperación de contraseña. |
 | `AUTH_IDENTIFIER_RATE_LIMIT` / `AUTH_IDENTIFIER_WINDOW_MINUTES` | Intentos por cuenta y duración del bloqueo. |
 | `TRUST_PROXY` | Proxies de confianza para `X-Forwarded-For` (por defecto, solo el proxy privado inmediato). |
-| `RABBITMQ_URL` | Broker de eventos. Sin conexión, `/health` responde `degraded`. |
+| `RABBITMQ_URL` | Opcional. Vacía o sin definir: eventos deshabilitados y `/health` reporta `disabled`. Definida pero sin conexión: `/health` responde `degraded`. |
 | `REFRESH_TOKEN_TTL_DAYS` | Días que dura un refresh token sin usarse (1 a 30, por defecto 7). Cada renovación emite uno nuevo y revoca el anterior. |
 
 ### Cómo obtener `JWT_SECRET`

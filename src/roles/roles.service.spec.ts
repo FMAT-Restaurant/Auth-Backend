@@ -68,7 +68,7 @@ describe('RolesService', () => {
       const result = await service.createRole({
         name: 'Barista',
         description: 'Preparación de bebidas y café',
-        permissions: ['orders:orders:view', 'menu:entries:view'],
+        permissions: ['orders:orders:view', 'menu:catalog:read'],
       });
 
       expect(result.code).toBe('ROL_BARISTA');
@@ -183,9 +183,9 @@ describe('RolesService', () => {
     it('acepta permisos del catálogo y quita duplicados', async () => {
       const role = await service.createRole({
         name: 'Barista',
-        permissions: ['orders:orders:view', 'menu:entries:view', 'orders:orders:view'],
+        permissions: ['orders:orders:view', 'menu:catalog:read', 'orders:orders:view'],
       });
-      expect(role.permissions).toEqual(['orders:orders:view', 'menu:entries:view']);
+      expect(role.permissions).toEqual(['orders:orders:view', 'menu:catalog:read']);
     });
   });
 

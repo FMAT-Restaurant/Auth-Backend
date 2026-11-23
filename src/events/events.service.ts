@@ -13,6 +13,9 @@ export function maskCredentials(url: string): string {
   return url.replace(/\/\/([^:/@]+):[^@]*@/, '//$1:***@');
 }
 
+/** Estado del broker para /health. "disabled" = RABBITMQ_URL no configurada. */
+export type BrokerStatus = 'connected' | 'disconnected' | 'disabled';
+
 export interface StaffEventPayload {
   userId: string;
   staffId: string;
@@ -28,14 +31,26 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
   private connection: amqp.ChannelModel | null = null;
   private channel: amqp.Channel | null = null;
   private readonly exchange = 'restaurant.staff.events';
+  private enabled = false;
 
   constructor(private readonly configService: ConfigService) {}
 
+  /**
+   * RabbitMQ es opcional: hoy ningún microservicio consume los eventos de Auth.
+   * Si RABBITMQ_URL no está definida (o está vacía), no se intenta conectar, los
+   * eventos se omiten y /health lo reporta como "disabled" sin marcarse degradado.
+   * Si está definida, el broker se considera necesario y una falla se reporta.
+   */
   async onModuleInit() {
-    const rabbitUrl = this.configService.get<string>(
-      'RABBITMQ_URL',
-      'amqp://localhost:5672',
-    );
+    const rabbitUrl = this.configService.get<string>('RABBITMQ_URL')?.trim();
+    if (!rabbitUrl) {
+      this.enabled = false;
+      this.logger.log(
+        'RabbitMQ deshabilitado (RABBITMQ_URL vacía): los eventos de personal no se publican.',
+      );
+      return;
+    }
+    this.enabled = true;
     try {
       this.connection = await amqp.connect(rabbitUrl);
       this.channel = await this.connection.createChannel();
@@ -55,9 +70,15 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** true si hay un canal abierto con el broker (lo usa /health). */
+  /** true si hay un canal abierto con el broker. */
   isConnected(): boolean {
     return this.channel !== null;
+  }
+
+  /** Estado del broker para /health. */
+  getStatus(): BrokerStatus {
+    if (!this.enabled) return 'disabled';
+    return this.isConnected() ? 'connected' : 'disconnected';
   }
 
   /**
@@ -106,7 +127,7 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
       } catch (err) {
         this.logger.error(`Error publicando evento [${routingKey}]: ${toErrorMessage(err)}`);
       }
-    } else {
+    } else if (this.enabled) {
       this.logger.debug(
         `[RabbitMQ Mock] Evento omitido por ausencia de broker: [${routingKey}] ${JSON.stringify(cloudEvent)}`,
       );

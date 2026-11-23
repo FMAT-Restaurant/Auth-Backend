@@ -496,6 +496,7 @@ export class StaffService {
       case RoleEnum.MESERO:
         return 'M';
       case RoleEnum.CHEF_MASTER:
+      case RoleEnum.COCINERO:
         return 'C';
       case RoleEnum.CAJERO:
         return 'J';

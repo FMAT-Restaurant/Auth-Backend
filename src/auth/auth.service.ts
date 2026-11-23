@@ -88,6 +88,9 @@ export class AuthService {
 
   async setupAdmin(dto: SetupAdminDto) {
     const email = dto.email.toLowerCase().trim();
+    if (dto.password.toLowerCase() === email) {
+      throw new BadRequestException('La contraseña no puede coincidir con el correo electrónico');
+    }
 
     // Comprobación e inserción dentro de una sola transacción con un bloqueo de
     // Postgres: si llegan varias peticiones a la vez, se atienden una por una y
@@ -167,6 +170,21 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const identifier = dto.identifier.trim();
+
+    if (dto.loginType === 'STAFF' && identifier.includes('@')) {
+      await this.isPasswordMatch(dto.password, await this.timingReferenceHash);
+      throw new UnauthorizedException(
+        'El personal operativo debe iniciar sesión con su Staff ID, no con correo electrónico',
+      );
+    }
+
+    if (dto.loginType === 'ADMIN' && !identifier.includes('@')) {
+      await this.isPasswordMatch(dto.password, await this.timingReferenceHash);
+      throw new UnauthorizedException(
+        'El Administrador debe iniciar sesión con su correo electrónico',
+      );
+    }
+
     let user: User | null = null;
     let staffId = 'ADMIN';
 
@@ -189,7 +207,13 @@ export class AuthService {
       }
     }
 
-    if (!user?.isActive) {
+    const modeMismatch = Boolean(
+      user &&
+        ((dto.loginType === 'STAFF' && user.userType !== UserType.STAFF) ||
+          (dto.loginType === 'ADMIN' && user.userType !== UserType.ADMIN)),
+    );
+
+    if (!user?.isActive || modeMismatch) {
       // Se hace la misma comparación bcrypt que con un usuario real para que el
       // tiempo de respuesta no revele si el usuario existe (enumeración de usuarios).
       await this.isPasswordMatch(dto.password, await this.timingReferenceHash);
@@ -242,6 +266,22 @@ export class AuthService {
       throw new BadRequestException('La contraseña actual ingresada es incorrecta');
     }
 
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException('La nueva contraseña no puede ser igual a la contraseña actual');
+    }
+
+    const lowerNew = dto.newPassword.toLowerCase();
+    const staffIdentifier = user.staffProfile?.staffId?.toLowerCase();
+    const emailIdentifier = user.email?.toLowerCase();
+    if (
+      (staffIdentifier && lowerNew === staffIdentifier) ||
+      (emailIdentifier && lowerNew === emailIdentifier)
+    ) {
+      throw new BadRequestException(
+        'La nueva contraseña no puede coincidir con tu identificador de usuario',
+      );
+    }
+
     user.passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_COST);
     user.passwordStatus = PasswordStatus.ACTIVE;
     // Invalida los access tokens emitidos con la contraseña anterior (#15).
@@ -266,6 +306,9 @@ export class AuthService {
   }
 
   async refresh(dto: RefreshTokenDto) {
+    if (!dto.refreshToken) {
+      throw new UnauthorizedException('Refresh token inválido o expirado');
+    }
     const tokenHash = this.hashToken(dto.refreshToken);
 
     const record = await this.refreshTokenRepo.findOne({

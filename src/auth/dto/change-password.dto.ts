@@ -1,5 +1,5 @@
-import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
-import { NoSurroundingWhitespace } from '../../common/validation/password.validation';
+import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsStrongPassword } from '../../common/validation/password.validation';
 
 export class ChangePasswordDto {
   @IsString()
@@ -8,9 +8,6 @@ export class ChangePasswordDto {
   currentPassword: string;
 
   @IsString()
-  @IsNotEmpty({ message: 'La nueva contraseña es obligatoria' })
-  @MinLength(8, { message: 'La nueva contraseña debe tener al menos 8 caracteres' })
-  @MaxLength(72, { message: 'La nueva contraseña no puede exceder 72 caracteres' })
-  @NoSurroundingWhitespace()
+  @IsStrongPassword()
   newPassword: string;
 }
