@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 
 import { User, PasswordStatus } from '../../database/entities/user.entity';
 import { assertValidJwtSecret } from '../../common/config/env.validation';
+import { JWT_AUDIENCE } from '../../common/constants/security.constant';
 
 export interface JwtPayload {
   sub: string;
@@ -31,6 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       algorithms: ['HS256'],
+      audience: JWT_AUDIENCE,
       secretOrKey: assertValidJwtSecret(configService.get<string>('JWT_SECRET')),
     });
   }

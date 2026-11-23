@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { StaffController } from './staff.controller';
 import { StaffService } from './staff.service';
 import { RoleEnum } from '../database/entities/role.entity';
@@ -120,6 +121,18 @@ describe('StaffController', () => {
         undefined,
         false,
       );
+    });
+
+    // #36 (ERS-GAP-07): el query booleano isActive debe validarse.
+    it('[#36] interpreta isActive="false" como booleano false', async () => {
+      await controller.findAllStaff(undefined, 'false', undefined, [RoleEnum.ADMINISTRADOR]);
+      expect(staffService.findAllStaff).toHaveBeenCalledWith(undefined, false, undefined, true);
+    });
+
+    it('[#36] rechaza un isActive que no sea true/false con 400', async () => {
+      await expect(
+        controller.findAllStaff(undefined, 'sí', undefined, [RoleEnum.ADMINISTRADOR]),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

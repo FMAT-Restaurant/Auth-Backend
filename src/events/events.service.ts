@@ -4,6 +4,11 @@ import * as amqp from 'amqplib';
 import * as crypto from 'node:crypto';
 
 /** Oculta la contraseña de una URL amqp://usuario:clave@host para los logs. */
+/** Mensaje seguro de un error de tipo unknown (catch). */
+export function toErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export function maskCredentials(url: string): string {
   return url.replace(/\/\/([^:/@]+):[^@]*@/, '//$1:***@');
 }
@@ -60,7 +65,7 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.channel = null;
       this.reportFailure(
-        `No se pudo conectar a RabbitMQ en ${maskCredentials(rabbitUrl)} (${error.message})`,
+        `No se pudo conectar a RabbitMQ en ${maskCredentials(rabbitUrl)} (${toErrorMessage(error)})`,
       );
     }
   }
@@ -120,7 +125,7 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
         );
         this.logger.log(`Evento publicado [${routingKey}]: ${cloudEvent.id}`);
       } catch (err) {
-        this.logger.error(`Error publicando evento [${routingKey}]: ${err.message}`);
+        this.logger.error(`Error publicando evento [${routingKey}]: ${toErrorMessage(err)}`);
       }
     } else if (this.enabled) {
       this.logger.debug(

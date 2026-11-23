@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, SelectQueryBuilder } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { BCRYPT_COST } from '../common/constants/security.constant';
 import * as crypto from 'node:crypto';
 
 import { User, UserType, PasswordStatus } from '../database/entities/user.entity';
@@ -50,7 +51,7 @@ export class StaffService {
     const tempPassword =
       dto.initialPassword ||
       this.generateRandomTempPassword();
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const passwordHash = await bcrypt.hash(tempPassword, BCRYPT_COST);
 
     // 5. Crear Usuario y Perfil
     const user = this.userRepo.create({
@@ -376,7 +377,7 @@ export class StaffService {
       dto?.temporaryPassword ||
       this.generateRandomTempPassword();
     const hadPendingRequest = Boolean(user.passwordResetRequested);
-    user.passwordHash = await bcrypt.hash(tempPassword, 10);
+    user.passwordHash = await bcrypt.hash(tempPassword, BCRYPT_COST);
     user.passwordStatus = PasswordStatus.TEMPORARY;
     user.passwordResetRequested = false;
     // Las sesiones abiertas con la contraseña anterior dejan de valer (#15).

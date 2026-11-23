@@ -25,9 +25,11 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
+import { BCRYPT_COST } from '../common/constants/security.constant';
+import { JWT_AUDIENCE } from '../common/constants/security.constant';
 
 const DEFAULT_REFRESH_TOKEN_TTL_DAYS = 7;
-const MAX_REFRESH_TOKEN_TTL_DAYS = 30;
+const MAX_REFRESH_TOKEN_TTL_DAYS = 14;
 
 /**
  * Vida del refresh token en milisegundos (REFRESH_TOKEN_TTL_DAYS, 7 días por
@@ -49,7 +51,7 @@ export class AuthService {
    */
   private readonly timingReferenceHash: Promise<string> = bcrypt.hash(
     crypto.randomBytes(32).toString('hex'),
-    10,
+    BCRYPT_COST,
   );
 
   constructor(
@@ -108,7 +110,7 @@ export class AuthService {
 
       const adminRole = await this.ensureAdminRole(manager);
 
-      const passwordHash = await bcrypt.hash(dto.password, 10);
+      const passwordHash = await bcrypt.hash(dto.password, BCRYPT_COST);
       const user = manager.create(User, {
         userType: UserType.ADMIN,
         email,
@@ -280,7 +282,7 @@ export class AuthService {
       );
     }
 
-    user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    user.passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_COST);
     user.passwordStatus = PasswordStatus.ACTIVE;
     // Invalida los access tokens emitidos con la contraseña anterior (#15).
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
@@ -544,6 +546,7 @@ export class AuthService {
 
     const payload = {
       iss: 'urn:fmat:restaurant:auth',
+      aud: JWT_AUDIENCE,
       sub: user.id,
       staffId,
       email: user.email,
@@ -553,7 +556,7 @@ export class AuthService {
       tv: user.tokenVersion ?? 0,
     };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
 
     const rawRefreshToken = crypto.randomBytes(40).toString('hex');
     const tokenHash = this.hashToken(rawRefreshToken);
@@ -570,7 +573,7 @@ export class AuthService {
       accessToken,
       refreshToken: rawRefreshToken,
       tokenType: 'Bearer',
-      expiresIn: 3600,
+      expiresIn: 900,
     };
   }
 

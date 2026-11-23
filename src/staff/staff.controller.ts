@@ -1,5 +1,6 @@
 import {
   Controller,
+  BadRequestException,
   Post,
   Get,
   Put,
@@ -19,6 +20,7 @@ import { UpdateStaffRolesDto } from './dto/update-staff-roles.dto';
 import { UpdateStaffStatusDto } from './dto/update-staff-status.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { TemporaryPasswordGuard } from '../common/guards/temporary-password.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -26,7 +28,7 @@ import { RoleEnum } from '../database/entities/role.entity';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('api/v1/staff')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TemporaryPasswordGuard, RolesGuard)
 @Roles(RoleEnum.ADMINISTRADOR)
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
@@ -49,7 +51,14 @@ export class StaffController {
     @Query('passwordResetRequested') passwordResetRequested?: string,
     @CurrentUser('roles') callerRoles?: string[],
   ) {
-    const toBool = (value?: string) => (value === undefined ? undefined : value === 'true');
+    const toBool = (value?: string): boolean | undefined => {
+      if (value === undefined) return undefined;
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      throw new BadRequestException(
+        `El parámetro booleano debe ser 'true' o 'false', se recibió '${value}'`,
+      );
+    };
     const isAdmin =
       Array.isArray(callerRoles) && callerRoles.includes(RoleEnum.ADMINISTRADOR);
     return this.staffService.findAllStaff(
