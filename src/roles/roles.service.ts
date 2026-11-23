@@ -8,6 +8,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role, RoleEnum } from '../database/entities/role.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
+import { getAuditRequestMetadata } from '../common/audit/request-context';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import {
@@ -20,7 +22,27 @@ export class RolesService implements OnModuleInit {
   constructor(
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepo: Repository<AuditLog>,
   ) {}
+
+  /** Registra cambios de roles/permisos con actor, IP y user-agent (#33). */
+  private async logAudit(action: string, details: object): Promise<void> {
+    try {
+      const { ipAddress, userAgent, actorId } = getAuditRequestMetadata();
+      await this.auditLogRepo.save(
+        this.auditLogRepo.create({
+          userId: actorId,
+          action,
+          ipAddress,
+          userAgent,
+          details: JSON.stringify(details),
+        }),
+      );
+    } catch {
+      // La auditoría no debe interrumpir la operación principal.
+    }
+  }
 
   async onModuleInit() {
     await this.seedDefaultRoles();
@@ -252,7 +274,9 @@ export class RolesService implements OnModuleInit {
       isSystemRole: false,
     });
 
-    return this.roleRepo.save(role);
+    const saved = await this.roleRepo.save(role);
+    await this.logAudit('ROLE_CREATED', { code: saved.code, permissions: saved.permissions });
+    return saved;
   }
 
   async updateRole(code: string, dto: UpdateRoleDto): Promise<Role> {
@@ -277,11 +301,22 @@ export class RolesService implements OnModuleInit {
       role.description = dto.description.trim();
     }
 
+    const previousPermissions = [...(role.permissions ?? [])];
     if (dto.permissions !== undefined) {
       role.permissions = this.validatePermissions(dto.permissions);
     }
 
-    return this.roleRepo.save(role);
+    const saved = await this.roleRepo.save(role);
+    await this.logAudit('ROLE_UPDATED', {
+      code: saved.code,
+      changedFields: Object.keys(dto).filter(
+        (key) => (dto as Record<string, unknown>)[key] !== undefined,
+      ),
+      ...(dto.permissions !== undefined
+        ? { previousPermissions, permissions: saved.permissions }
+        : {}),
+    });
+    return saved;
   }
 
   /**
@@ -312,6 +347,7 @@ export class RolesService implements OnModuleInit {
     }
 
     await this.roleRepo.delete({ code: role.code });
+    await this.logAudit('ROLE_DELETED', { code: role.code, name: role.name });
 
     return {
       message: `Rol '${role.name}' eliminado exitosamente`,

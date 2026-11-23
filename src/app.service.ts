@@ -4,6 +4,8 @@ import { BrokerStatus, EventsService } from './events/events.service';
 export interface HealthStatus {
   status: 'healthy' | 'degraded';
   timestamp: string;
+  /** Segundos desde que arrancó el proceso (REQ-AUTH-022, #37). */
+  uptime: number;
   dependencies: { rabbitmq: BrokerStatus };
 }
 
@@ -29,6 +31,7 @@ export class AppService {
     return {
       status: rabbitmq === 'disconnected' ? 'degraded' : 'healthy',
       timestamp: new Date().toISOString(),
+      uptime: Math.floor(process.uptime()),
       dependencies: { rabbitmq },
     };
   }

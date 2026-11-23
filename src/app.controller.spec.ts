@@ -32,6 +32,14 @@ describe('AppController', () => {
       expect(new Date(response.timestamp).toString()).not.toBe('Invalid Date');
     });
 
+    it('[#37] incluye uptime en segundos enteros (REQ-AUTH-022)', () => {
+      const spy = jest.spyOn(process, 'uptime').mockReturnValue(125.9);
+      const response = appController.getHealth();
+      expect(response.uptime).toBe(125);
+      spy.mockRestore();
+      expect(Number.isInteger(appController.getHealth().uptime)).toBe(true);
+    });
+
     it('[SEC #11] reporta "degraded" si RabbitMQ no está conectado', () => {
       eventsService.getStatus.mockReturnValue('disconnected');
       const response = appController.getHealth();

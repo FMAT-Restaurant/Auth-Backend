@@ -27,6 +27,7 @@ import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { resolveViewsForRoles } from '../common/constants/views.constant';
 import { BCRYPT_COST } from '../common/constants/security.constant';
 import { JWT_AUDIENCE } from '../common/constants/security.constant';
+import { getAuditRequestMetadata } from '../common/audit/request-context';
 
 const DEFAULT_REFRESH_TOKEN_TTL_DAYS = 7;
 const MAX_REFRESH_TOKEN_TTL_DAYS = 14;
@@ -583,9 +584,12 @@ export class AuthService {
 
   private async logAudit(userId: string | null, action: string, details: any) {
     try {
+      const { ipAddress, userAgent } = getAuditRequestMetadata();
       const log = this.auditLogRepo.create({
         userId,
         action,
+        ipAddress,
+        userAgent,
         details: JSON.stringify(details),
       });
       await this.auditLogRepo.save(log);

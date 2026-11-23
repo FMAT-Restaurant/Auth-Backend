@@ -4,9 +4,12 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { applySecurity } from './common/security/security.config';
 import { DatabaseExceptionFilter } from './common/filters/database-exception.filter';
+import { requestContextMiddleware } from './common/audit/request-context';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Contexto por petición (IP, user-agent, actor) para la auditoría (#33).
+  app.use(requestContextMiddleware);
   applySecurity(app);
   app.useGlobalPipes(
     new ValidationPipe({

@@ -9,6 +9,8 @@ import { Role, RoleEnum } from '../database/entities/role.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
 import { AuditLog } from '../database/entities/audit-log.entity';
 import { EventsService } from '../events/events.service';
+import { runWithRequestContext } from '../common/audit/request-context';
+import type { Request } from 'express';
 
 describe('StaffService', () => {
   let service: StaffService;
@@ -608,6 +610,119 @@ describe('StaffService', () => {
         userId: 'usr-1',
         staffId: 'M000001',
       });
+    });
+  });
+
+  describe('[#33] auditoría de operaciones de personal', () => {
+    const req = {
+      ip: '::ffff:192.168.0.20',
+      headers: { 'user-agent': 'Chrome/Pruebas' },
+      user: { userId: 'adm-9' },
+    } as unknown as Request;
+
+    const staffUser = () => ({
+      id: 'usr-1',
+      isActive: true,
+      staffProfile: { staffId: 'M000001', firstName: 'Juan', lastName: 'Pérez' },
+      roles: [{ code: RoleEnum.MESERO }],
+    });
+
+    const mockFind = (user: object) =>
+      userRepo.createQueryBuilder.mockReturnValue({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(user),
+      });
+
+    const lastEntry = () => auditLogRepo.save.mock.calls.at(-1)[0];
+
+    const expectContext = (entry: any, action: string) => {
+      expect(entry).toEqual(
+        expect.objectContaining({
+          action,
+          userId: 'adm-9',
+          ipAddress: '192.168.0.20',
+          userAgent: 'Chrome/Pruebas',
+        }),
+      );
+    };
+
+    it('STAFF_CREATED sin la contraseña temporal', async () => {
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.MESERO, isAssignable: true }]);
+      const result = await runWithRequestContext(req, () =>
+        service.createStaff({ firstName: 'Ana', lastName: 'Ruiz', roles: [RoleEnum.MESERO] }),
+      );
+      const entry = lastEntry();
+      expectContext(entry, 'STAFF_CREATED');
+      expect(JSON.parse(entry.details)).toEqual({
+        targetUserId: 'usr-staff-1',
+        staffId: result.staffId,
+        roles: [RoleEnum.MESERO],
+      });
+      expect(entry.details).not.toContain(result.temporaryPassword);
+    });
+
+    it('STAFF_ROLES_UPDATED con los roles nuevos', async () => {
+      mockFind(staffUser());
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.HOST }]);
+      await runWithRequestContext(req, () => service.updateRoles('usr-1', { roles: [RoleEnum.HOST] }));
+      const entry = lastEntry();
+      expectContext(entry, 'STAFF_ROLES_UPDATED');
+      expect(JSON.parse(entry.details)).toEqual({
+        targetUserId: 'usr-1',
+        staffId: 'M000001',
+        roles: [RoleEnum.HOST],
+      });
+    });
+
+    it('STAFF_STATUS_CHANGED indica si se revocaron sesiones', async () => {
+      mockFind(staffUser());
+      await runWithRequestContext(req, () => service.updateStatus('usr-1', { isActive: false }));
+      const entry = lastEntry();
+      expectContext(entry, 'STAFF_STATUS_CHANGED');
+      expect(JSON.parse(entry.details)).toEqual({
+        targetUserId: 'usr-1',
+        staffId: 'M000001',
+        isActive: false,
+        sessionsRevoked: true,
+      });
+    });
+
+    it('STAFF_UPDATED lista los campos cambiados', async () => {
+      mockFind(staffUser());
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.HOST }]);
+      await runWithRequestContext(req, () =>
+        service.updateStaff('usr-1', { firstName: 'Juan C.', roles: [RoleEnum.HOST], isActive: false }),
+      );
+      const entry = auditLogRepo.save.mock.calls.find((c: any[]) => c[0].action === 'STAFF_UPDATED')[0];
+      expectContext(entry, 'STAFF_UPDATED');
+      expect(JSON.parse(entry.details)).toEqual({
+        targetUserId: 'usr-1',
+        staffId: 'M000001',
+        changedFields: ['firstName', 'roles', 'isActive'],
+        roles: [RoleEnum.HOST],
+        isActive: false,
+      });
+    });
+
+    it('STAFF_DELETED', async () => {
+      mockFind({ id: 'usr-1', staffProfile: { staffId: 'M000001' } });
+      await runWithRequestContext(req, () => service.deleteStaff('usr-1'));
+      const entry = lastEntry();
+      expectContext(entry, 'STAFF_DELETED');
+      expect(JSON.parse(entry.details)).toEqual({ targetUserId: 'usr-1', staffId: 'M000001' });
+    });
+
+    it('fuera de una petición HTTP registra sin IP ni actor y no falla si la auditoría falla', async () => {
+      mockFind({ id: 'usr-1', staffProfile: { staffId: 'M000001' } });
+      auditLogRepo.save.mockRejectedValueOnce(new Error('db caída'));
+      await expect(service.deleteStaff('usr-1')).resolves.toEqual(
+        expect.objectContaining({ staffId: 'M000001' }),
+      );
+      expect(lastEntry()).toEqual(
+        expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
+      );
     });
   });
 });
