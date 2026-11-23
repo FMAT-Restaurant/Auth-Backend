@@ -104,7 +104,11 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private publish(routingKey: string, type: string, data: StaffEventPayload | { userId: string; staffId: string }) {
+  private publish(
+    routingKey: string,
+    type: string,
+    data: StaffEventPayload | { userId: string; staffId: string },
+  ) {
     const cloudEvent = {
       specversion: '1.0',
       type,
@@ -117,12 +121,9 @@ export class EventsService implements OnModuleInit, OnModuleDestroy {
 
     if (this.channel) {
       try {
-        this.channel.publish(
-          this.exchange,
-          routingKey,
-          Buffer.from(JSON.stringify(cloudEvent)),
-          { persistent: true },
-        );
+        this.channel.publish(this.exchange, routingKey, Buffer.from(JSON.stringify(cloudEvent)), {
+          persistent: true,
+        });
         this.logger.log(`Evento publicado [${routingKey}]: ${cloudEvent.id}`);
       } catch (err) {
         this.logger.error(`Error publicando evento [${routingKey}]: ${toErrorMessage(err)}`);

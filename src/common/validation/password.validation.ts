@@ -17,7 +17,12 @@ const HAS_LOWERCASE = /[a-z]/;
 const HAS_DIGIT = /\d/;
 const HAS_SYMBOL = /[^A-Za-z0-9\s]/;
 const HAS_REPEATED_RUN = /(.)\1{3,}/;
-const SEQUENTIAL_RUNS = ['0123456789', '9876543210', 'abcdefghijklmnopqrstuvwxyz', 'zyxwvutsrqponmlkjihgfedcba'];
+const SEQUENTIAL_RUNS = [
+  '0123456789',
+  '9876543210',
+  'abcdefghijklmnopqrstuvwxyz',
+  'zyxwvutsrqponmlkjihgfedcba',
+];
 
 function hasTrivialSequence(password: string): boolean {
   if (HAS_REPEATED_RUN.test(password)) {

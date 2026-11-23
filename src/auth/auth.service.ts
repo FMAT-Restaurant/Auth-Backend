@@ -98,9 +98,7 @@ export class AuthService {
     // solo la primera crea al administrador (#13). El usuario y su perfil se
     // guardan juntos, así que un fallo no deja cuentas a medias.
     const adminUser = await this.dataSource.transaction(async (manager) => {
-      await manager.query('SELECT pg_advisory_xact_lock($1)', [
-        AuthService.SETUP_ADMIN_LOCK_KEY,
-      ]);
+      await manager.query('SELECT pg_advisory_xact_lock($1)', [AuthService.SETUP_ADMIN_LOCK_KEY]);
 
       const existingUsers = await manager.count(User);
       if (existingUsers > 0) {
@@ -210,8 +208,8 @@ export class AuthService {
 
     const modeMismatch = Boolean(
       user &&
-        ((dto.loginType === 'STAFF' && user.userType !== UserType.STAFF) ||
-          (dto.loginType === 'ADMIN' && user.userType !== UserType.ADMIN)),
+      ((dto.loginType === 'STAFF' && user.userType !== UserType.STAFF) ||
+        (dto.loginType === 'ADMIN' && user.userType !== UserType.ADMIN)),
     );
 
     if (!user?.isActive || modeMismatch) {
@@ -268,7 +266,9 @@ export class AuthService {
     }
 
     if (dto.newPassword === dto.currentPassword) {
-      throw new BadRequestException('La nueva contraseña no puede ser igual a la contraseña actual');
+      throw new BadRequestException(
+        'La nueva contraseña no puede ser igual a la contraseña actual',
+      );
     }
 
     const lowerNew = dto.newPassword.toLowerCase();
@@ -289,10 +289,7 @@ export class AuthService {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
-    await this.refreshTokenRepo.update(
-      { userId: user.id, isRevoked: false },
-      { isRevoked: true },
-    );
+    await this.refreshTokenRepo.update({ userId: user.id, isRevoked: false }, { isRevoked: true });
 
     const staffId = user.staffProfile ? user.staffProfile.staffId : 'ADMIN';
     const tokens = await this.generateTokens(user, staffId, false);
@@ -336,10 +333,7 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    await this.refreshTokenRepo.update(
-      { userId, isRevoked: false },
-      { isRevoked: true },
-    );
+    await this.refreshTokenRepo.update({ userId, isRevoked: false }, { isRevoked: true });
     // Cierra también los access tokens que sigan vigentes (#15).
     await this.userRepo.increment({ id: userId }, 'tokenVersion', 1);
     await this.logAudit(userId, 'LOGOUT', {});
@@ -462,10 +456,7 @@ export class AuthService {
       );
     }
 
-    await this.refreshTokenRepo.update(
-      { userId, isRevoked: false },
-      { isRevoked: true },
-    );
+    await this.refreshTokenRepo.update({ userId, isRevoked: false }, { isRevoked: true });
 
     await this.staffProfileRepo.delete({ userId });
     await this.userRepo.delete({ id: userId });
@@ -487,10 +478,10 @@ export class AuthService {
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.staffProfile', 'staffProfile')
       .where('user.userType = :userType', { userType: UserType.STAFF })
-      .andWhere(
-        '(UPPER(staffProfile.staffId) = :staffId OR UPPER(user.email) = :email)',
-        { staffId: cleanStaffId, email: rawIdentifier.toUpperCase() },
-      )
+      .andWhere('(UPPER(staffProfile.staffId) = :staffId OR UPPER(user.email) = :email)', {
+        staffId: cleanStaffId,
+        email: rawIdentifier.toUpperCase(),
+      })
       .getOne();
 
     if (user && user.isActive) {
@@ -537,11 +528,7 @@ export class AuthService {
     return Array.from(permissions);
   }
 
-  private async generateTokens(
-    user: User,
-    staffId: string,
-    mustChangePassword = false,
-  ) {
+  private async generateTokens(user: User, staffId: string, mustChangePassword = false) {
     const roles = user.roles ? user.roles.map((r) => r.code) : [];
     const permissions = this.extractPermissions(user);
 
@@ -582,7 +569,7 @@ export class AuthService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
-  private async logAudit(userId: string | null, action: string, details: any) {
+  private async logAudit(userId: string | null, action: string, details: object) {
     try {
       const { ipAddress, userAgent } = getAuditRequestMetadata();
       const log = this.auditLogRepo.create({

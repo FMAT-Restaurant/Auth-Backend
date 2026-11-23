@@ -31,8 +31,7 @@ function requestBody(context: ExecutionContext): unknown {
  *   saltarse el límite (#17). Al superarlo, la cuenta queda bloqueada un rato.
  */
 export function buildAuthThrottlers(env: NodeJS.ProcessEnv = process.env): ThrottlerOptions[] {
-  const identifierWindowMs =
-    readPositiveInt(env.AUTH_IDENTIFIER_WINDOW_MINUTES, 15) * MINUTE;
+  const identifierWindowMs = readPositiveInt(env.AUTH_IDENTIFIER_WINDOW_MINUTES, 15) * MINUTE;
 
   return [
     {

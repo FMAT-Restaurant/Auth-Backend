@@ -1,5 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { validateStrongPassword } from './password.validation';
 import { ChangePasswordDto } from '../../auth/dto/change-password.dto';
 import { SetupAdminDto } from '../../auth/dto/setup-admin.dto';
 import { CreateStaffDto } from '../../staff/dto/create-staff.dto';
@@ -17,7 +18,11 @@ describe('[SEC #16] Contraseñas sin espacios al inicio ni al final', () => {
 
   it.each(tricky)('rechaza %p como nueva contraseña', (value) => {
     expect(
-      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: value }, 'newPassword'),
+      errorsFor(
+        ChangePasswordDto,
+        { currentPassword: 'Actual123', newPassword: value },
+        'newPassword',
+      ),
     ).not.toHaveLength(0);
   });
 
@@ -33,27 +38,47 @@ describe('[SEC #16] Contraseñas sin espacios al inicio ni al final', () => {
 
   it('exige complejidad unificada (mín. 8 chars, mayúscula, minúscula, número y símbolo)', () => {
     expect(
-      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'Abc1!' }, 'newPassword'),
+      errorsFor(
+        ChangePasswordDto,
+        { currentPassword: 'Actual123', newPassword: 'Abc1!' },
+        'newPassword',
+      ),
     ).toEqual(['La contraseña debe tener al menos 8 caracteres']);
 
     expect(
-      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'solominusculas1!' }, 'newPassword'),
+      errorsFor(
+        ChangePasswordDto,
+        { currentPassword: 'Actual123', newPassword: 'solominusculas1!' },
+        'newPassword',
+      ),
     ).toEqual([
       'La contraseña debe incluir al menos una mayúscula, una minúscula, un número y un símbolo especial',
     ]);
 
     expect(
-      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'SinSimbolo123' }, 'newPassword'),
+      errorsFor(
+        ChangePasswordDto,
+        { currentPassword: 'Actual123', newPassword: 'SinSimbolo123' },
+        'newPassword',
+      ),
     ).toEqual([
       'La contraseña debe incluir al menos una mayúscula, una minúscula, un número y un símbolo especial',
     ]);
 
     expect(
-      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'Clave1234!' }, 'newPassword'),
+      errorsFor(
+        ChangePasswordDto,
+        { currentPassword: 'Actual123', newPassword: 'Clave1234!' },
+        'newPassword',
+      ),
     ).toEqual(['La contraseña no puede contener secuencias triviales o caracteres repetidos']);
 
     expect(
-      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'ClaveSegura9!' }, 'newPassword'),
+      errorsFor(
+        ChangePasswordDto,
+        { currentPassword: 'Actual123', newPassword: 'ClaveSegura9!' },
+        'newPassword',
+      ),
     ).toHaveLength(0);
   });
 
@@ -79,16 +104,28 @@ describe('[SEC #19] Límites de longitud en los DTO', () => {
 
   it('rechaza nombres de más de 100 caracteres al crear personal', () => {
     expect(
-      errorsFor(CreateStaffDto, { firstName: long(101), lastName: 'B', roles: ['MESERO'] }, 'firstName'),
+      errorsFor(
+        CreateStaffDto,
+        { firstName: long(101), lastName: 'B', roles: ['MESERO'] },
+        'firstName',
+      ),
     ).not.toHaveLength(0);
     expect(
-      errorsFor(CreateStaffDto, { firstName: long(100), lastName: 'B', roles: ['MESERO'] }, 'firstName'),
+      errorsFor(
+        CreateStaffDto,
+        { firstName: long(100), lastName: 'B', roles: ['MESERO'] },
+        'firstName',
+      ),
     ).toHaveLength(0);
   });
 
   it('rechaza teléfonos de más de 30 caracteres', () => {
     expect(
-      errorsFor(CreateStaffDto, { firstName: 'A', lastName: 'B', roles: ['MESERO'], phone: long(31) }, 'phone'),
+      errorsFor(
+        CreateStaffDto,
+        { firstName: 'A', lastName: 'B', roles: ['MESERO'], phone: long(31) },
+        'phone',
+      ),
     ).not.toHaveLength(0);
   });
 
@@ -106,7 +143,26 @@ describe('[SEC #19] Límites de longitud en los DTO', () => {
 
   it('rechaza nombres largos en setup-admin', () => {
     expect(
-      errorsFor(SetupAdminDto, { email: 'a@fmat.mx', password: 'Clave123!', firstName: long(500) }, 'firstName'),
+      errorsFor(
+        SetupAdminDto,
+        { email: 'a@fmat.mx', password: 'Clave123!', firstName: long(500) },
+        'firstName',
+      ),
     ).not.toHaveLength(0);
+  });
+});
+
+describe('validateStrongPassword: casos borde', () => {
+  it.each([
+    [undefined, 'La contraseña es obligatoria'],
+    [12345678, 'La contraseña es obligatoria'],
+    ['', 'La contraseña es obligatoria'],
+    [`Fm#1${'x'.repeat(70)}`, 'La contraseña no puede exceder 72 caracteres'],
+  ])('%p → %s', (value, message) => {
+    expect(validateStrongPassword(value)).toBe(message);
+  });
+
+  it('rechaza 4 o más caracteres repetidos seguidos', () => {
+    expect(validateStrongPassword('Fmat#aaaa2026')).toMatch(/secuencias triviales/);
   });
 });

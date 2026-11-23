@@ -6,7 +6,11 @@ import {
 } from './request-context';
 
 function fakeRequest(overrides: Record<string, unknown> = {}): Request {
-  return { ip: '192.168.0.10', headers: { 'user-agent': 'Jest' }, ...overrides } as unknown as Request;
+  return {
+    ip: '192.168.0.10',
+    headers: { 'user-agent': 'Jest' },
+    ...overrides,
+  } as unknown as Request;
 }
 
 describe('request-context (#33)', () => {
@@ -22,7 +26,8 @@ describe('request-context (#33)', () => {
 
   it('quita el prefijo IPv4 mapeado en IPv6 y usa la IP del socket si falta req.ip', () => {
     expect(
-      runWithRequestContext(fakeRequest({ ip: '::ffff:10.1.2.3' }), getAuditRequestMetadata).ipAddress,
+      runWithRequestContext(fakeRequest({ ip: '::ffff:10.1.2.3' }), getAuditRequestMetadata)
+        .ipAddress,
     ).toBe('10.1.2.3');
     expect(
       runWithRequestContext(

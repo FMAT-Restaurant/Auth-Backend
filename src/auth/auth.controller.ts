@@ -49,8 +49,8 @@ function readCookie(req: Request | undefined, name: string): string | undefined 
 function isSecureCookie(req?: Request): boolean {
   return Boolean(
     req?.secure ||
-      req?.headers?.['x-forwarded-proto'] === 'https' ||
-      process.env.COOKIE_SECURE === 'true',
+    req?.headers?.['x-forwarded-proto'] === 'https' ||
+    process.env.COOKIE_SECURE === 'true',
   );
 }
 
@@ -179,10 +179,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('profile')
-  async updateProfile(
-    @CurrentUser('userId') userId: string,
-    @Body() dto: UpdateProfileDto,
-  ) {
+  async updateProfile(@CurrentUser('userId') userId: string, @Body() dto: UpdateProfileDto) {
     return this.authService.updateProfile(userId, dto);
   }
 

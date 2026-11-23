@@ -43,16 +43,14 @@ describe('Guards, JwtStrategy y Utilidades', () => {
 
     it('debería lanzar ForbiddenException si el usuario no cuenta con el rol requerido', () => {
       const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
-      expect(() =>
-        guard.canActivate(createMockContext({ roles: [RoleEnum.MESERO] })),
-      ).toThrow(ForbiddenException);
+      expect(() => guard.canActivate(createMockContext({ roles: [RoleEnum.MESERO] }))).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('debería permitir acceso cuando el usuario tiene el rol requerido', () => {
       const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR]));
-      expect(
-        guard.canActivate(createMockContext({ roles: [RoleEnum.ADMINISTRADOR] })),
-      ).toBe(true);
+      expect(guard.canActivate(createMockContext({ roles: [RoleEnum.ADMINISTRADOR] }))).toBe(true);
     });
 
     it('debería permitir acceso por @RequirePermissions a roles personalizados con permiso válido', () => {
@@ -70,13 +68,9 @@ describe('Guards, JwtStrategy y Utilidades', () => {
     });
 
     it('debería permitir acceso por @RequirePermissions a ADMINISTRADOR o comodín *', () => {
-      const guard = new RolesGuard(
-        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']),
-      );
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']));
       expect(
-        guard.canActivate(
-          createMockContext({ roles: [RoleEnum.ADMINISTRADOR], permissions: [] }),
-        ),
+        guard.canActivate(createMockContext({ roles: [RoleEnum.ADMINISTRADOR], permissions: [] })),
       ).toBe(true);
       expect(
         guard.canActivate(createMockContext({ roles: ['ROL_CUSTOM'], permissions: ['*'] })),
@@ -84,9 +78,7 @@ describe('Guards, JwtStrategy y Utilidades', () => {
     });
 
     it('debería denegar acceso por @RequirePermissions si no tiene ninguno de los permisos requeridos', () => {
-      const guard = new RolesGuard(
-        mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']),
-      );
+      const guard = new RolesGuard(mockReflector([RoleEnum.ADMINISTRADOR], ['sala:tables:view']));
       expect(() =>
         guard.canActivate(
           createMockContext({
@@ -100,7 +92,9 @@ describe('Guards, JwtStrategy y Utilidades', () => {
 
   describe('JwtAuthGuard', () => {
     it('debería retornar true inmediatamente si la ruta es pública (@Public)', () => {
-      const reflector = { getAllAndOverride: jest.fn().mockReturnValue(true) } as unknown as Reflector;
+      const reflector = {
+        getAllAndOverride: jest.fn().mockReturnValue(true),
+      } as unknown as Reflector;
       const guard = new JwtAuthGuard(reflector);
       expect(guard.canActivate(createMockContext())).toBe(true);
     });
@@ -110,9 +104,9 @@ describe('Guards, JwtStrategy y Utilidades', () => {
     const guard = new TemporaryPasswordGuard();
 
     it('debería lanzar ForbiddenException si mustChangePassword es true', () => {
-      expect(() =>
-        guard.canActivate(createMockContext({ mustChangePassword: true })),
-      ).toThrow(ForbiddenException);
+      expect(() => guard.canActivate(createMockContext({ mustChangePassword: true }))).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('debería permitir el paso si mustChangePassword es false o no hay usuario', () => {
@@ -186,9 +180,7 @@ describe('Guards, JwtStrategy y Utilidades', () => {
     });
 
     it('debería lanzar UnauthorizedException si falta sub en el payload', async () => {
-      await expect(strategy.validate(payload({ sub: '' }))).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(strategy.validate(payload({ sub: '' }))).rejects.toThrow(UnauthorizedException);
     });
 
     it('[SEC #15] rechaza el token si el usuario fue desactivado', async () => {

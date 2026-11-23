@@ -158,10 +158,9 @@ describe('AuthService', () => {
       await service.setupAdmin({ email: 'admin@fmat.com', password: 'Password123!' });
 
       expect(dataSource.transaction).toHaveBeenCalledTimes(1);
-      expect(manager.query).toHaveBeenCalledWith(
-        'SELECT pg_advisory_xact_lock($1)',
-        [expect.any(Number)],
-      );
+      expect(manager.query).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock($1)', [
+        expect.any(Number),
+      ]);
       // El bloqueo va antes de la comprobación y de cualquier inserción.
       const lockOrder = manager.query.mock.invocationCallOrder[0];
       expect(lockOrder).toBeLessThan(manager.count.mock.invocationCallOrder[0]);
@@ -331,9 +330,9 @@ describe('AuthService', () => {
         staffProfile: { staffId: 'M000001' },
       });
 
-      await expect(
-        service.login({ identifier: 'm@test.com', password: 'x' }),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(service.login({ identifier: 'm@test.com', password: 'x' })).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -728,7 +727,9 @@ describe('AuthService', () => {
 
       const result = await service.requestPasswordReset({ identifier: 'M000001' });
 
-      expect(result.message).toBe('Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.');
+      expect(result.message).toBe(
+        'Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.',
+      );
       expect(staffUser.passwordResetRequested).toBe(true);
       expect(userRepo.save).toHaveBeenCalledWith(staffUser);
       expect(auditLogRepo.create).toHaveBeenCalledWith(
@@ -749,15 +750,16 @@ describe('AuthService', () => {
 
       const result = await service.requestPasswordReset({ identifier: 'INEXISTENTE' });
 
-      expect(result.message).toBe('Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.');
+      expect(result.message).toBe(
+        'Solicitud registrada. Si la cuenta existe, el Administrador te asignará una contraseña temporal nueva.',
+      );
       expect(userRepo.save).not.toHaveBeenCalled();
     });
 
     it('debería rechazar si el identifier está vacío', async () => {
-      await expect(
-        service.requestPasswordReset({ identifier: '   ' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.requestPasswordReset({ identifier: '   ' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });
-

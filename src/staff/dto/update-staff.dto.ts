@@ -1,11 +1,4 @@
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsBoolean,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateStaffDto {
   @IsString()

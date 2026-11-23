@@ -13,7 +13,12 @@ describe('AuthController', () => {
       getSetupStatus: jest.fn().mockResolvedValue({ configured: true }),
       setupAdmin: jest.fn().mockResolvedValue({
         message: 'Cuenta de Administrador inicial configurada exitosamente',
-        user: { id: 'usr-1', email: 'admin@test.com', staffId: 'ADM000001', roles: [RoleEnum.ADMINISTRADOR] },
+        user: {
+          id: 'usr-1',
+          email: 'admin@test.com',
+          staffId: 'ADM000001',
+          roles: [RoleEnum.ADMINISTRADOR],
+        },
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       }),

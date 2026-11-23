@@ -101,9 +101,7 @@ describe('StaffService', () => {
     });
 
     it('debería registrar un nuevo miembro del personal y publicar evento en RabbitMQ sin restaurantId', async () => {
-      roleRepo.find.mockResolvedValue([
-        { id: '1', code: RoleEnum.MESERO, name: RoleEnum.MESERO },
-      ]);
+      roleRepo.find.mockResolvedValue([{ id: '1', code: RoleEnum.MESERO, name: RoleEnum.MESERO }]);
       staffProfileRepo.count.mockResolvedValue(0);
       staffProfileRepo.findOne.mockResolvedValue(null);
 
@@ -145,9 +143,7 @@ describe('StaffService', () => {
     });
 
     it('debería asignar el prefijo correcto según el rol primario', async () => {
-      roleRepo.find.mockResolvedValue([
-        { id: '1', code: RoleEnum.HOST, name: RoleEnum.HOST },
-      ]);
+      roleRepo.find.mockResolvedValue([{ id: '1', code: RoleEnum.HOST, name: RoleEnum.HOST }]);
       staffProfileRepo.count.mockResolvedValue(10);
       staffProfileRepo.findOne.mockResolvedValue(null);
 
@@ -241,9 +237,9 @@ describe('StaffService', () => {
       );
       roleRepo.find.mockResolvedValue([]);
 
-      await expect(
-        service.updateStaff('usr-1', { roles: ['ROL_NO_EXISTE'] }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateStaff('usr-1', { roles: ['ROL_NO_EXISTE'] })).rejects.toThrow(
+        BadRequestException,
+      );
       expect(userRepo.save).not.toHaveBeenCalled();
     });
   });
@@ -380,9 +376,7 @@ describe('StaffService', () => {
       };
       userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
-      await expect(service.findStaffById('M999999')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findStaffById('M999999')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -409,10 +403,7 @@ describe('StaffService', () => {
         getOne: jest.fn().mockResolvedValue(user),
       };
       userRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
-      roleRepo.find.mockResolvedValue([
-        { code: RoleEnum.MESERO },
-        { code: RoleEnum.HOST },
-      ]);
+      roleRepo.find.mockResolvedValue([{ code: RoleEnum.MESERO }, { code: RoleEnum.HOST }]);
 
       const result = await service.updateRoles('usr-1', {
         roles: [RoleEnum.MESERO, RoleEnum.HOST],
@@ -666,7 +657,9 @@ describe('StaffService', () => {
     it('STAFF_ROLES_UPDATED con los roles nuevos', async () => {
       mockFind(staffUser());
       roleRepo.find.mockResolvedValue([{ code: RoleEnum.HOST }]);
-      await runWithRequestContext(req, () => service.updateRoles('usr-1', { roles: [RoleEnum.HOST] }));
+      await runWithRequestContext(req, () =>
+        service.updateRoles('usr-1', { roles: [RoleEnum.HOST] }),
+      );
       const entry = lastEntry();
       expectContext(entry, 'STAFF_ROLES_UPDATED');
       expect(JSON.parse(entry.details)).toEqual({
@@ -693,9 +686,15 @@ describe('StaffService', () => {
       mockFind(staffUser());
       roleRepo.find.mockResolvedValue([{ code: RoleEnum.HOST }]);
       await runWithRequestContext(req, () =>
-        service.updateStaff('usr-1', { firstName: 'Juan C.', roles: [RoleEnum.HOST], isActive: false }),
+        service.updateStaff('usr-1', {
+          firstName: 'Juan C.',
+          roles: [RoleEnum.HOST],
+          isActive: false,
+        }),
       );
-      const entry = auditLogRepo.save.mock.calls.find((c: any[]) => c[0].action === 'STAFF_UPDATED')[0];
+      const entry = auditLogRepo.save.mock.calls.find(
+        (c: any[]) => c[0].action === 'STAFF_UPDATED',
+      )[0];
       expectContext(entry, 'STAFF_UPDATED');
       expect(JSON.parse(entry.details)).toEqual({
         targetUserId: 'usr-1',

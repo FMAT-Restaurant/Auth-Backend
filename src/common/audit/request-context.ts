@@ -50,9 +50,10 @@ export function getAuditRequestMetadata(): AuditRequestMetadata {
     return { ipAddress: null, userAgent: null, actorId: null };
   }
   const userAgentHeader = req.headers?.['user-agent'];
-  const userAgent = typeof userAgentHeader === 'string' && userAgentHeader.length > 0
-    ? userAgentHeader.slice(0, MAX_USER_AGENT_LENGTH)
-    : null;
+  const userAgent =
+    typeof userAgentHeader === 'string' && userAgentHeader.length > 0
+      ? userAgentHeader.slice(0, MAX_USER_AGENT_LENGTH)
+      : null;
   const user = (req as Request & { user?: { userId?: unknown } }).user;
   const actorId = typeof user?.userId === 'string' ? user.userId : null;
 

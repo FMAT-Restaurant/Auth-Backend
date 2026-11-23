@@ -154,9 +154,9 @@ describe('RolesService', () => {
         isSystemRole: true,
       });
 
-      await expect(
-        service.updateRole(RoleEnum.ADMINISTRADOR, { permissions: [] }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateRole(RoleEnum.ADMINISTRADOR, { permissions: [] })).rejects.toThrow(
+        BadRequestException,
+      );
       expect(roleRepo.save).not.toHaveBeenCalled();
     });
 
@@ -177,9 +177,9 @@ describe('RolesService', () => {
 
   describe('[SEC #18] permisos de roles personalizados', () => {
     it('rechaza el permiso "*" al crear un rol', async () => {
-      await expect(
-        service.createRole({ name: 'Super', permissions: ['*'] }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.createRole({ name: 'Super', permissions: ['*'] })).rejects.toThrow(
+        BadRequestException,
+      );
       expect(roleRepo.save).not.toHaveBeenCalled();
     });
 
@@ -220,9 +220,7 @@ describe('RolesService', () => {
       };
       roleRepo.findOne.mockResolvedValue(systemRole);
 
-      await expect(service.deleteRole(RoleEnum.MESERO)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.deleteRole(RoleEnum.MESERO)).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -270,7 +268,11 @@ describe('RolesService', () => {
     });
 
     it('registra ROLE_DELETED y no audita si la operación falla', async () => {
-      roleRepo.findOne.mockResolvedValueOnce({ code: RoleEnum.MESERO, name: 'Mesero', isSystemRole: true });
+      roleRepo.findOne.mockResolvedValueOnce({
+        code: RoleEnum.MESERO,
+        name: 'Mesero',
+        isSystemRole: true,
+      });
       await expect(service.deleteRole(RoleEnum.MESERO)).rejects.toThrow(BadRequestException);
       expect(auditLogRepo.save).not.toHaveBeenCalled();
 
@@ -287,5 +289,60 @@ describe('RolesService', () => {
         service.createRole({ name: 'Mixólogo', permissions: ['orders:orders:view'] }),
       ).resolves.toEqual(expect.objectContaining({ code: 'ROL_MIXOLOGO' }));
     });
+  });
+});
+
+describe('RolesService: ramas adicionales (#35)', () => {
+  let service: RolesService;
+  let roleRepo: any;
+
+  beforeEach(async () => {
+    roleRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((entity) => entity),
+      save: jest.fn((entity) => Promise.resolve(entity)),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RolesService,
+        { provide: getRepositoryToken(Role), useValue: roleRepo },
+        {
+          provide: getRepositoryToken(AuditLog),
+          useValue: { create: jest.fn((e) => e), save: jest.fn().mockResolvedValue({}) },
+        },
+      ],
+    }).compile();
+    service = module.get(RolesService);
+  });
+
+  it('antepone ROL_ a un código que no es de sistema y rechaza códigos de más de 50', async () => {
+    const role = await service.createRole({
+      name: 'Barista',
+      code: 'barista',
+      permissions: ['orders:orders:view'],
+    });
+    expect(role.code).toBe('ROL_BARISTA');
+
+    await expect(
+      service.createRole({ name: 'x'.repeat(60), permissions: ['orders:orders:view'] }),
+    ).rejects.toThrow('demasiado largo');
+  });
+
+  it('permite actualizar nombre y descripción de un rol personalizado', async () => {
+    roleRepo.findOne.mockResolvedValue({
+      code: 'ROL_BARISTA',
+      name: 'Barista',
+      description: 'd',
+      permissions: [],
+      isSystemRole: false,
+    });
+    const updated = await service.updateRole('ROL_BARISTA', {
+      name: '  Barista Senior ',
+      description: '  Nueva  ',
+    });
+    expect(updated.name).toBe('Barista Senior');
+    expect(updated.description).toBe('Nueva');
   });
 });

@@ -60,9 +60,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     const roles = user.roles ? user.roles.map((r) => r.code) : [];
-    const permissions = Array.from(
-      new Set((user.roles ?? []).flatMap((r) => r.permissions || [])),
-    );
+    const permissions = Array.from(new Set((user.roles ?? []).flatMap((r) => r.permissions || [])));
 
     return {
       userId: user.id,
