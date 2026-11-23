@@ -15,6 +15,7 @@ import { Role, RoleEnum } from '../database/entities/role.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
 import { AuditLog } from '../database/entities/audit-log.entity';
 import { EventsService } from '../events/events.service';
+import { getAuditRequestMetadata } from '../common/audit/request-context';
 
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
@@ -83,6 +84,13 @@ export class StaffService {
       lastName: profile.lastName,
       roles: roleEntities.map((r) => r.code),
       isActive: true,
+    });
+
+    // Nunca se registra la contraseña temporal, solo quién creó a quién.
+    await this.logAudit(null, 'STAFF_CREATED', {
+      targetUserId: user.id,
+      staffId,
+      roles: roleEntities.map((r) => r.code),
     });
 
     // La contraseña temporal solo se guarda como hash y se muestra una única vez,
@@ -219,6 +227,12 @@ export class StaffService {
       isActive: user.isActive,
     });
 
+    await this.logAudit(null, 'STAFF_ROLES_UPDATED', {
+      targetUserId: user.id,
+      staffId: user.staffProfile?.staffId,
+      roles: roleEntities.map((r) => r.code),
+    });
+
     return {
       message: 'Roles de personal actualizados exitosamente',
       staffId: user.staffProfile?.staffId,
@@ -264,6 +278,14 @@ export class StaffService {
       lastName: user.staffProfile?.lastName || '',
       roles: user.roles ? user.roles.map((r) => r.code) : [],
       isActive: user.isActive,
+    });
+
+    // Desactivar revoca las sesiones del empleado: queda registrado quién lo hizo.
+    await this.logAudit(null, 'STAFF_STATUS_CHANGED', {
+      targetUserId: user.id,
+      staffId: user.staffProfile?.staffId,
+      isActive: user.isActive,
+      sessionsRevoked: !user.isActive,
     });
 
     return {
@@ -316,6 +338,16 @@ export class StaffService {
 
     await this.userRepo.save(user);
 
+    await this.logAudit(null, 'STAFF_UPDATED', {
+      targetUserId: user.id,
+      staffId: user.staffProfile?.staffId,
+      changedFields: Object.keys(dto).filter(
+        (key) => (dto as Record<string, unknown>)[key] !== undefined,
+      ),
+      ...(dto.roles && dto.roles.length > 0 ? { roles: user.roles.map((r) => r.code) } : {}),
+      ...(dto.isActive !== undefined ? { isActive: user.isActive } : {}),
+    });
+
     return this.findStaffById(user.id);
   }
 
@@ -352,6 +384,8 @@ export class StaffService {
       userId,
       staffId,
     });
+
+    await this.logAudit(null, 'STAFF_DELETED', { targetUserId: userId, staffId });
 
     return {
       message: 'Colaborador eliminado definitivamente del sistema',
@@ -443,10 +477,21 @@ export class StaffService {
     return normalized.map((code) => byCode.get(code) as Role);
   }
 
+  /**
+   * Registra una acción administrativa. `userId` es quien la hizo; si no se pasa,
+   * se toma el usuario autenticado de la petición. Incluye IP y user-agent (#33).
+   */
   private async logAudit(userId: string | null, action: string, details: object) {
     try {
+      const { ipAddress, userAgent, actorId } = getAuditRequestMetadata();
       await this.auditLogRepo.save(
-        this.auditLogRepo.create({ userId, action, details: JSON.stringify(details) }),
+        this.auditLogRepo.create({
+          userId: userId ?? actorId,
+          action,
+          ipAddress,
+          userAgent,
+          details: JSON.stringify(details),
+        }),
       );
     } catch {
       // La auditoría no debe interrumpir la operación principal.

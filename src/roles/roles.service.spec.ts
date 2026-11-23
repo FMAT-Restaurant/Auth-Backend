@@ -3,12 +3,20 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { Role, RoleEnum } from '../database/entities/role.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
+import { runWithRequestContext } from '../common/audit/request-context';
+import type { Request } from 'express';
 
 describe('RolesService', () => {
   let service: RolesService;
   let roleRepo: any;
+  let auditLogRepo: { create: jest.Mock; save: jest.Mock };
 
   beforeEach(async () => {
+    auditLogRepo = {
+      create: jest.fn((entity) => entity),
+      save: jest.fn((entity) => Promise.resolve(entity)),
+    };
     roleRepo = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue(null),
@@ -24,6 +32,7 @@ describe('RolesService', () => {
           provide: getRepositoryToken(Role),
           useValue: roleRepo,
         },
+        { provide: getRepositoryToken(AuditLog), useValue: auditLogRepo },
       ],
     }).compile();
 
@@ -214,6 +223,69 @@ describe('RolesService', () => {
       await expect(service.deleteRole(RoleEnum.MESERO)).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('[#33] auditoría de roles', () => {
+    const req = {
+      ip: '::ffff:10.0.0.7',
+      headers: { 'user-agent': 'Mozilla/5.0 (Pruebas)' },
+      user: { userId: 'admin-1' },
+    } as unknown as Request;
+
+    it('registra ROLE_CREATED con actor, IP y user-agent', async () => {
+      await runWithRequestContext(req, () =>
+        service.createRole({ name: 'Barista', permissions: ['orders:orders:view'] }),
+      );
+      expect(auditLogRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'ROLE_CREATED',
+          userId: 'admin-1',
+          ipAddress: '10.0.0.7',
+          userAgent: 'Mozilla/5.0 (Pruebas)',
+        }),
+      );
+      const details = JSON.parse(auditLogRepo.save.mock.calls[0][0].details);
+      expect(details).toEqual({ code: 'ROL_BARISTA', permissions: ['orders:orders:view'] });
+    });
+
+    it('registra ROLE_UPDATED con los permisos anteriores y nuevos', async () => {
+      roleRepo.findOne.mockResolvedValue({
+        code: 'ROL_BARISTA',
+        name: 'Barista',
+        permissions: ['orders:orders:view'],
+        isSystemRole: false,
+      });
+      await runWithRequestContext(req, () =>
+        service.updateRole('ROL_BARISTA', { permissions: ['menu:entries:read'] }),
+      );
+      const entry = auditLogRepo.save.mock.calls[0][0];
+      expect(entry.action).toBe('ROLE_UPDATED');
+      expect(JSON.parse(entry.details)).toEqual({
+        code: 'ROL_BARISTA',
+        changedFields: ['permissions'],
+        previousPermissions: ['orders:orders:view'],
+        permissions: ['menu:entries:read'],
+      });
+    });
+
+    it('registra ROLE_DELETED y no audita si la operación falla', async () => {
+      roleRepo.findOne.mockResolvedValueOnce({ code: RoleEnum.MESERO, name: 'Mesero', isSystemRole: true });
+      await expect(service.deleteRole(RoleEnum.MESERO)).rejects.toThrow(BadRequestException);
+      expect(auditLogRepo.save).not.toHaveBeenCalled();
+
+      roleRepo.findOne.mockResolvedValueOnce({ code: 'ROL_X', name: 'X', isSystemRole: false });
+      await service.deleteRole('ROL_X');
+      expect(auditLogRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ROLE_DELETED', userId: null, ipAddress: null }),
+      );
+    });
+
+    it('un fallo al guardar la auditoría no interrumpe la operación', async () => {
+      auditLogRepo.save.mockRejectedValueOnce(new Error('db caída'));
+      await expect(
+        service.createRole({ name: 'Mixólogo', permissions: ['orders:orders:view'] }),
+      ).resolves.toEqual(expect.objectContaining({ code: 'ROL_MIXOLOGO' }));
     });
   });
 });
