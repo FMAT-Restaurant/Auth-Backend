@@ -21,13 +21,39 @@ describe('[SEC #16] Contraseñas sin espacios al inicio ni al final', () => {
     ).not.toHaveLength(0);
   });
 
-  it('acepta contraseñas con espacios en medio', () => {
+  it('acepta contraseñas válidas con espacios en medio', () => {
     expect(
       errorsFor(
         ChangePasswordDto,
-        { currentPassword: 'Actual123', newPassword: 'Mi clave segura' },
+        { currentPassword: 'Actual123', newPassword: 'Mi clave2!' },
         'newPassword',
       ),
+    ).toHaveLength(0);
+  });
+
+  it('exige complejidad unificada (mín. 8 chars, mayúscula, minúscula, número y símbolo)', () => {
+    expect(
+      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'Abc1!' }, 'newPassword'),
+    ).toEqual(['La contraseña debe tener al menos 8 caracteres']);
+
+    expect(
+      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'solominusculas1!' }, 'newPassword'),
+    ).toEqual([
+      'La contraseña debe incluir al menos una mayúscula, una minúscula, un número y un símbolo especial',
+    ]);
+
+    expect(
+      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'SinSimbolo123' }, 'newPassword'),
+    ).toEqual([
+      'La contraseña debe incluir al menos una mayúscula, una minúscula, un número y un símbolo especial',
+    ]);
+
+    expect(
+      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'Clave1234!' }, 'newPassword'),
+    ).toEqual(['La contraseña no puede contener secuencias triviales o caracteres repetidos']);
+
+    expect(
+      errorsFor(ChangePasswordDto, { currentPassword: 'Actual123', newPassword: 'ClaveSegura9!' }, 'newPassword'),
     ).toHaveLength(0);
   });
 
@@ -80,7 +106,7 @@ describe('[SEC #19] Límites de longitud en los DTO', () => {
 
   it('rechaza nombres largos en setup-admin', () => {
     expect(
-      errorsFor(SetupAdminDto, { email: 'a@fmat.mx', password: 'Clave12345', firstName: long(500) }, 'firstName'),
+      errorsFor(SetupAdminDto, { email: 'a@fmat.mx', password: 'Clave123!', firstName: long(500) }, 'firstName'),
     ).not.toHaveLength(0);
   });
 });

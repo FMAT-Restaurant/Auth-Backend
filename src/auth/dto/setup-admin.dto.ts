@@ -1,5 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { NoSurroundingWhitespace } from '../../common/validation/password.validation';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsStrongPassword } from '../../common/validation/password.validation';
 
 export class SetupAdminDto {
   @IsEmail({}, { message: 'Debe proporcionar un correo electrónico válido' })
@@ -8,10 +8,7 @@ export class SetupAdminDto {
   email: string;
 
   @IsString()
-  @IsNotEmpty({ message: 'La contraseña es obligatoria' })
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
-  @MaxLength(72, { message: 'La contraseña no puede exceder 72 caracteres' })
-  @NoSurroundingWhitespace()
+  @IsStrongPassword()
   password: string;
 
   @IsString()

@@ -395,6 +395,59 @@ describe('AuthService', () => {
       const result = await service.login({ identifier: 'M000009', password: 'Clave12345' });
       expect(result.user.permissions).toEqual(['orders:view']);
     });
+
+    it('rechaza que un ADMIN inicie sesión enviando correo en modo STAFF', async () => {
+      const hash = await bcrypt.hash('CorrectPassword123!', 10);
+      userRepo.findOne.mockResolvedValue({
+        id: 'usr-1',
+        userType: UserType.ADMIN,
+        email: 'admin@test.com',
+        passwordHash: hash,
+        passwordStatus: PasswordStatus.ACTIVE,
+        isActive: true,
+        roles: [{ code: RoleEnum.ADMINISTRADOR }],
+        staffProfile: { staffId: 'ADM000001' },
+      });
+
+      await expect(
+        service.login({
+          identifier: 'admin@test.com',
+          password: 'CorrectPassword123!',
+          loginType: 'STAFF',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      await expect(
+        service.login({
+          identifier: 'ADM000001',
+          password: 'CorrectPassword123!',
+          loginType: 'STAFF',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rechaza que un STAFF inicie sesión en modo ADMIN', async () => {
+      const hash = await bcrypt.hash('Clave123!', 10);
+      staffProfileRepo.findOne.mockResolvedValue({
+        staffId: 'M000009',
+        user: {
+          id: 'usr-9',
+          userType: UserType.STAFF,
+          passwordHash: hash,
+          passwordStatus: PasswordStatus.ACTIVE,
+          isActive: true,
+          roles: [{ code: RoleEnum.MESERO }],
+        },
+      });
+
+      await expect(
+        service.login({
+          identifier: 'M000009',
+          password: 'Clave123!',
+          loginType: 'ADMIN',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
   });
 
   describe('changeInitialPassword', () => {
@@ -472,6 +525,29 @@ describe('AuthService', () => {
         service.changeInitialPassword('usr-1', {
           currentPassword: 'WrongCurrentPass',
           newPassword: 'BrandNewPassword123!',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rechaza si la nueva contraseña es igual a la actual o coincide con el Staff ID', async () => {
+      const hash = await bcrypt.hash('OldTemp1!', 10);
+      userRepo.findOne.mockResolvedValue({
+        id: 'usr-1',
+        passwordHash: hash,
+        staffProfile: { staffId: 'M000001' },
+      });
+
+      await expect(
+        service.changeInitialPassword('usr-1', {
+          currentPassword: 'OldTemp1!',
+          newPassword: 'OldTemp1!',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.changeInitialPassword('usr-1', {
+          currentPassword: 'OldTemp1!',
+          newPassword: 'M000001',
         }),
       ).rejects.toThrow(BadRequestException);
     });

@@ -7,6 +7,7 @@ export enum RoleEnum {
   GESTOR_MENU = 'GESTOR_MENU',
   MESERO = 'MESERO',
   CHEF_MASTER = 'CHEF_MASTER',
+  COCINERO = 'COCINERO',
   CAJERO = 'CAJERO',
 }
 
